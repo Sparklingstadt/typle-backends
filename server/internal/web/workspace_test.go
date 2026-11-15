@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -634,86 +635,60 @@ func TestNowIsUsed(t *testing.T) {
 	}
 }
 
-// These are the inputs of tests/workspace.test.cjs for validateWorkspaceRequest, and what it does with each; this
-// checks that the request is read the same way here. The limits of the lists (workspace.CheckLimits) and their number
-// are checked by the store, not by the request: limits is a request that the store's CheckLimits refuses.
+// putCase is a body of PUT /api/workspace from tests/fixtures/workspace-put.json, which tests/workspaceRequest.test.cjs
+// runs through validateWorkspaceRequest: both sides must accept and refuse the same bodies. Lists and Devices are how
+// many an accepted body sends, -1 when it leaves them out. The limits of the lists (workspace.CheckLimits) are checked by
+// the store, not by the request.
+type putCase struct {
+	Name, Body               string
+	Accepted                 bool
+	Revision, Lists, Devices int
+}
+
 func TestMatchesTypeScript(t *testing.T) {
-	const (
-		accepted = iota
-		invalid
-		legacy
-		limits
-	)
-	name201 := strings.Repeat("a", 201)
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "fixtures", "workspace-put.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct{ Cases []putCase }
+	if err := json.Unmarshal(data, &fixture); err != nil || len(fixture.Cases) == 0 {
+		t.Fatalf("fixture = %+v, %v", fixture, err)
+	}
+	// Too long to write out in the fixture.
 	many := make([]string, 101)
 	for i := range many {
 		many[i] = aList(fmt.Sprintf("l%d", i), fmt.Sprintf("L%d", i))
 	}
-	cases := []struct {
-		name, body string
-		want       int
-		revision   int
-		lists      int // -1 when left out
-		devices    int
-	}{
-		{"sharing fields dropped", `{"revision":1,"lists":[` + strings.Replace(oneList, `"records":[]`, `"records":[],"shared":true,"shareId":"x"`, 1) + `]}`, accepted, 1, 1, -1},
-		{"revision -1", `{"revision":-1,"lists":[]}`, invalid, 0, 0, 0},
-		{"revision 1.5", `{"revision":1.5,"lists":[]}`, invalid, 0, 0, 0},
-		{"revision string", `{"revision":"0","lists":[]}`, invalid, 0, 0, 0},
-		{"revision NaN, which JSON writes as null", `{"revision":null,"lists":[]}`, invalid, 0, 0, 0},
-		{"revision missing", `{"lists":[]}`, invalid, 0, 0, 0},
-		{"revision 2^53", `{"revision":9007199254740992,"lists":[]}`, invalid, 0, 0, 0},
-		{"revision 2^53-1", `{"revision":9007199254740991,"lists":[]}`, accepted, 9007199254740991, 0, -1},
-		{"revision 1.0", `{"revision":1.0,"lists":[]}`, accepted, 1, 0, -1},
-		{"revision 1e2", `{"revision":1e2,"lists":[]}`, accepted, 100, 0, -1},
-		{"revision -0", `{"revision":-0,"lists":[]}`, accepted, 0, 0, -1},
-		{"name of 201 characters", `{"revision":0,"lists":[` + aList("one", name201) + `]}`, invalid, 0, 0, 0},
-		{"name of 200 characters", `{"revision":0,"lists":[` + aList("one", name201[1:]) + `]}`, accepted, 0, 1, -1},
-		{"profileId default", `{"revision":0,"profileId":"default","lists":[` + oneList + `]}`, invalid, 0, 0, 0},
-		{"profileId zh", `{"revision":1,"profileId":"zh","lists":[]}`, invalid, 0, 0, 0},
-		{"profiles with default", `{"revision":1,"profileId":"default","profiles":[{"id":"default","name":"メイン"}]}`, invalid, 0, 0, 0},
-		{"101 lists", `{"revision":1,"lists":[` + strings.Join(many, ",") + `]}`, accepted, 1, 101, -1},
-		{"devices", `{"revision":1,"devices":[{"id":"mac","name":" MacBook ","layout":"JIS"}]}`, accepted, 1, -1, 1},
-		{"duplicate devices", `{"revision":1,"devices":[{"id":"mac","name":"a","layout":""},{"id":"mac","name":"b","layout":""}]}`, invalid, 0, 0, 0},
-		{"lists left out", `{"revision":2}`, accepted, 2, -1, -1},
-		{"interests alone", `{"revision":2,"interests":["language"]}`, accepted, 2, -1, -1},
-		{"interests null", `{"revision":2,"interests":null}`, accepted, 2, -1, -1},
-		{"interests duplicate", `{"revision":2,"interests":["a","a"]}`, invalid, 0, 0, 0},
-		{"interests number", `{"revision":2,"interests":["a",1]}`, invalid, 0, 0, 0},
-		{"not an object", `[1]`, invalid, 0, 0, 0},
-	}
+	cases := append(fixture.Cases, putCase{Name: "101 lists", Body: `{"revision":1,"lists":[` + strings.Join(many, ",") + `]}`,
+		Accepted: true, Revision: 1, Lists: 101, Devices: -1})
+	byName := map[string]putCase{}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			revision, change, err := decodeRequest([]byte(c.body))
-			switch c.want {
-			case invalid:
+		byName[c.Name] = c
+		t.Run(c.Name, func(t *testing.T) {
+			revision, change, err := decodeRequest([]byte(c.Body))
+			if !c.Accepted {
 				if err == nil {
 					t.Fatalf("err = %v; want invalid", err)
 				}
-			case limits:
-				var refused *workspace.Error
-				if err != nil || !errors.As(workspace.CheckLimits(change.Lists), &refused) || refused.Key != "invalidWorkspace" {
-					t.Fatalf("err = %v, limits not refused for %+v", err, change)
-				}
-			default:
-				if err != nil {
-					t.Fatal(err)
-				}
-				if revision != c.revision || change.HasLists != (c.lists >= 0) || change.HasDevices != (c.devices >= 0) ||
-					len(change.Lists) != max(c.lists, 0) || len(change.Devices) != max(c.devices, 0) {
-					t.Fatalf("revision %d, change %+v", revision, change)
-				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if revision != c.Revision || change.HasLists != (c.Lists >= 0) || change.HasDevices != (c.Devices >= 0) ||
+				len(change.Lists) != max(c.Lists, 0) || len(change.Devices) != max(c.Devices, 0) {
+				t.Fatalf("revision %d, change %+v", revision, change)
 			}
 		})
 	}
 	// The dropped fields are gone from what would be saved.
-	_, change, _ := decodeRequest([]byte(cases[0].body))
+	_, change, _ := decodeRequest([]byte(byName["sharing fields dropped"].Body))
 	encoded, err := workspace.Encode(change.Lists)
 	if err != nil || bytes.Contains(encoded, []byte("shared")) {
 		t.Fatalf("encoded = %s, %v", encoded, err)
 	}
 	// A device's name is trimmed, as decodeDevices does.
-	_, change, _ = decodeRequest([]byte(cases[17].body))
+	_, change, _ = decodeRequest([]byte(byName["devices"].Body))
 	if change.Devices[0].Name != "MacBook" {
 		t.Fatalf("device = %+v", change.Devices[0])
 	}
