@@ -216,3 +216,22 @@ func readPackFileList(item json.RawMessage) (PackFileList, bool) {
 	}
 	return list, true
 }
+
+// packMissing is the app's packDeleted, under the key the API answers with.
+func packMissing() error { return &Error{Key: "packNotFound"} }
+
+func cloneWriting(writing *Writing) *Writing {
+	if writing == nil {
+		return nil
+	}
+	return &Writing{Language: writing.Language}
+}
+
+// plainWords copies words without the fields Typle does not know, as wordsOf (src/core/packFile.ts) does.
+func plainWords(words []Word) []Word {
+	plain := make([]Word, 0, len(words))
+	for _, word := range words {
+		plain = append(plain, Word{Display: word.Display, Input: word.Input, Annotation: word.Annotation, InputType: word.InputType})
+	}
+	return plain
+}

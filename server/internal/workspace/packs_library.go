@@ -430,8 +430,7 @@ func viewLists(w *Workspace) {
 // ApplyListChange follows applyListChange (src/core/wordPacks.ts): it puts a change made to the lists of previous (the
 // workspace as Decode read it) back into the packs. The lists then carry their packs' labels again.
 //
-// The packs are those of w, which the functions of packs_edit.go change themselves (keeping the lists' labels those of
-// their packs); the list functions leave them as previous had them, as applyListChange takes them.
+// The packs are those of w, as applyListChange takes them.
 func (w *Workspace) ApplyListChange(previous *Workspace) {
 	before := map[string]List{}
 	for _, list := range previous.Lists {
@@ -573,4 +572,22 @@ func has(data []byte, found func(key string, value json.RawMessage) bool) bool {
 		}
 	}
 	return false
+}
+
+// levelPath follows levelPath (src/core/packEditing.ts): the levels the practice screen picks a list of a pack by, or
+// its name when it has none.
+func levelPath(name string, levels []string) []string {
+	if len(levels) > 0 {
+		return levels
+	}
+	return []string{name}
+}
+
+// pathsOverlap follows pathsOverlap (src/core/packEditing.ts): two paths that are equal, or one the start of the other,
+// leave one of their lists out of reach.
+func pathsOverlap(a, b []string) bool {
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+	return slices.Equal(a, b[:len(a)])
 }

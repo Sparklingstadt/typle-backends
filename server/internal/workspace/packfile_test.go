@@ -199,3 +199,14 @@ func TestPackFileWriting(t *testing.T) {
 		wantKey(t, err, "packFileUnreadable")
 	}
 }
+
+const packStamp = "2026-10-01T00:00:00.000Z"
+
+func TestDecodePackFileDropsAByteOrderMark(t *testing.T) {
+	text := packFileText(`[{"name":"L","words":[{"display":"a","input":"a","annotation":""}]}]`, `{"name":"P"}`)
+	if file, err := DecodePackFile([]byte("\uFEFF" + text)); err != nil || file.Pack.Name != "P" {
+		t.Fatalf("file = %+v, %v", file, err)
+	}
+	_, err := DecodePackFile([]byte("\uFEFF\uFEFF" + text))
+	wantKey(t, err, "packFileUnreadable")
+}

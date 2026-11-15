@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
 // Copies of src/plugins/packs, made by scripts/generate-packs.cjs (npm run packs:generate) and checked against the
@@ -83,4 +84,9 @@ func commandLists() ([]*rawList, error) {
 		commands = append(commands, &list)
 	}
 	return commands, nil
+}
+
+// packIndex is where the pack id is in w.Packs, or -1.
+func packIndex(w *Workspace, id string) int {
+	return slices.IndexFunc(w.Packs, func(pack Pack) bool { return pack.ID == id })
 }
