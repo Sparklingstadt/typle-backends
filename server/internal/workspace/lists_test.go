@@ -25,25 +25,11 @@ func wantKey(t *testing.T, err error, key string) {
 	}
 }
 
-// The expected values are what Node's toLowerCase gives.
+// The cases are shared with tests/strings.test.cjs, which checks them against Node's toLowerCase.
 func TestLowerCase(t *testing.T) {
-	cases := map[string]string{
-		"\u039f\u0394\u039f\u03a3":              "\u03bf\u03b4\u03bf\u03c2", // ΟΔΟΣ → οδος
-		"\u039f\u0394\u039f\u03a3 \u0391\u03a3": "\u03bf\u03b4\u03bf\u03c2 \u03b1\u03c2",
-		"\u0391\u03a3.":                         "\u03b1\u03c2.",       // . can follow a final Σ
-		"\u0391\u03a3'\u0392":                   "\u03b1\u03c3'\u03b2", // ' inside a word does not end it
-		"\u0391\u03a3:\u0392":                   "\u03b1\u03c3:\u03b2",
-		"\u0391\u03a3\u0301":                    "\u03b1\u03c2\u0301", // a combining accent is ignored
-		"\u0391\u03a31":                         "\u03b1\u03c21",      // a digit is not a letter
-		"1\u03a3":                               "1\u03c3",            // nothing cased before it
-		"\u03a3":                                "\u03c3",
-		"A\u02bc\u00ad\u03a3":                   "a\u02bc\u00ad\u03c2", // modifier letters and soft hyphens are ignored
-		"\u0130stanbul":                         "i\u0307stanbul",
-		"ABC":                                   "abc",
-	}
-	for input, want := range cases {
-		if got := lowerCase(input); got != want {
-			t.Errorf("lowerCase(%q) = %q, want %q", input, got, want)
+	for _, c := range stringCases(t).LowerCase {
+		if got := lowerCase(c.Input); got != c.Want {
+			t.Errorf("lowerCase(%q) = %q, want %q", c.Input, got, c.Want)
 		}
 	}
 }

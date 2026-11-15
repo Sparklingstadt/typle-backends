@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -305,11 +306,27 @@ func TestDecodeRecordMode(t *testing.T) {
 	}
 }
 
+// The cases are shared with tests/strings.test.cjs, which checks them against Node's trim.
 func TestTrimJS(t *testing.T) {
-	cases := map[string]string{" a ": "a", "\ufeffa\ufeff": "a", "\u0085a\u0085": "\u0085a\u0085", "　a ": "a", "\t\v\f\r\n a": "a"}
-	for input, want := range cases {
-		if got := trimJS(input); got != want {
-			t.Errorf("trimJS(%q) = %q, want %q", input, got, want)
+	for _, c := range stringCases(t).Trim {
+		if got := trimJS(c.Input); got != c.Want {
+			t.Errorf("trimJS(%q) = %q, want %q", c.Input, got, c.Want)
 		}
 	}
+}
+
+type stringCase struct{ Input, Want string }
+
+// stringCases reads tests/fixtures/strings.json: what JavaScript's toLowerCase and trim give.
+func stringCases(t *testing.T) struct{ LowerCase, Trim []stringCase } {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "fixtures", "strings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases struct{ LowerCase, Trim []stringCase }
+	if err := json.Unmarshal(data, &cases); err != nil || len(cases.LowerCase) == 0 || len(cases.Trim) == 0 {
+		t.Fatalf("cases = %+v, %v", cases, err)
+	}
+	return cases
 }
