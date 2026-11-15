@@ -152,6 +152,15 @@ func (s *server) adminError(ctx context.Context) error {
 	return nil
 }
 
+// resolved is v, or f as the GraphQL error REST would answer with.
+func resolved[T any](ctx context.Context, s *server, v T, f *failure) (T, error) {
+	if f != nil {
+		var zero T
+		return zero, s.graphqlError(ctx, f)
+	}
+	return v, nil
+}
+
 func (q query) Workspace(ctx context.Context) (*graph.Workspace, error) {
 	owner, err := q.s.graphqlOwner(ctx)
 	if err != nil {
@@ -170,19 +179,13 @@ func (q query) Shares(ctx context.Context) ([]store.Share, error) {
 		return nil, err
 	}
 	shares, f := q.s.accountShares(callOf(ctx).r, owner)
-	if f != nil {
-		return nil, q.s.graphqlError(ctx, f)
-	}
-	return shares, nil
+	return resolved(ctx, q.s, shares, f)
 }
 
 // SharedPack is read by anyone with the link, signed in or not.
 func (q query) SharedPack(ctx context.Context, id string) (graph.JSON, error) {
 	data, f := q.s.sharedFile(callOf(ctx).r, id)
-	if f != nil {
-		return nil, q.s.graphqlError(ctx, f)
-	}
-	return graph.JSON(data), nil
+	return resolved(ctx, q.s, graph.JSON(data), f)
 }
 
 // Gallery is read by anyone, signed in or not.
@@ -209,10 +212,7 @@ func (q query) Gallery(ctx context.Context, text, category string, sort graph.Ga
 // GalleryCategories is read by anyone, signed in or not.
 func (q query) GalleryCategories(ctx context.Context) ([]store.GalleryCategory, error) {
 	categories, f := q.s.categories(callOf(ctx).r)
-	if f != nil {
-		return nil, q.s.graphqlError(ctx, f)
-	}
-	return categories, nil
+	return resolved(ctx, q.s, categories, f)
 }
 
 func (q query) AdminGallery(ctx context.Context) ([]store.AdminGalleryPack, error) {
@@ -220,10 +220,7 @@ func (q query) AdminGallery(ctx context.Context) ([]store.AdminGalleryPack, erro
 		return nil, err
 	}
 	packs, f := q.s.adminGalleryPacks(callOf(ctx).r)
-	if f != nil {
-		return nil, q.s.graphqlError(ctx, f)
-	}
-	return packs, nil
+	return resolved(ctx, q.s, packs, f)
 }
 
 func (q query) AdminDashboard(ctx context.Context) (*graph.AdminDashboard, error) {
@@ -240,11 +237,10 @@ func (q query) AdminDashboard(ctx context.Context) (*graph.AdminDashboard, error
 }
 
 func (q query) AdminUsers(ctx context.Context, page int) (*graph.AdminUsers, error) {
-	c := callOf(ctx)
-	if _, f := q.s.administrator(c.w, c.r); f != nil {
-		return nil, q.s.graphqlError(ctx, f)
+	if err := q.s.adminError(ctx); err != nil {
+		return nil, err
 	}
-	users, f := q.s.usersPage(c.r, page)
+	users, f := q.s.usersPage(callOf(ctx).r, page)
 	if f != nil {
 		return nil, q.s.graphqlError(ctx, f)
 	}
@@ -323,10 +319,7 @@ func (m mutation) SharePack(ctx context.Context, packID string, listed *bool) (*
 		return nil, err
 	}
 	share, f := m.s.sharePack(callOf(ctx).r, owner, packID, listed)
-	if f != nil {
-		return nil, m.s.graphqlError(ctx, f)
-	}
-	return share, nil
+	return resolved(ctx, m.s, share, f)
 }
 
 func (m mutation) StopSharing(ctx context.Context, packID string) (bool, error) {
@@ -334,10 +327,7 @@ func (m mutation) StopSharing(ctx context.Context, packID string) (bool, error) 
 	if err != nil {
 		return false, err
 	}
-	if f := m.s.stopSharing(callOf(ctx).r, owner, packID); f != nil {
-		return false, m.s.graphqlError(ctx, f)
-	}
-	return true, nil
+	return resolved(ctx, m.s, true, m.s.stopSharing(callOf(ctx).r, owner, packID))
 }
 
 // CountAdded needs no login, only the app's own Origin or an app, as POST /api/gallery/added.
@@ -346,10 +336,7 @@ func (m mutation) CountAdded(ctx context.Context, id string) (bool, error) {
 		return false, err
 	}
 	c := callOf(ctx)
-	if f := m.s.countAdded(c.w, c.r, id); f != nil {
-		return false, m.s.graphqlError(ctx, f)
-	}
-	return true, nil
+	return resolved(ctx, m.s, true, m.s.countAdded(c.w, c.r, id))
 }
 
 // ReportPack needs no login, only the app's own Origin or an app, as POST /api/gallery/reports.
@@ -358,10 +345,7 @@ func (m mutation) ReportPack(ctx context.Context, id, reason string) (bool, erro
 		return false, err
 	}
 	c := callOf(ctx)
-	if f := m.s.reportPack(c.w, c.r, id, reason); f != nil {
-		return false, m.s.graphqlError(ctx, f)
-	}
-	return true, nil
+	return resolved(ctx, m.s, true, m.s.reportPack(c.w, c.r, id, reason))
 }
 
 // SetPackHidden is the administrator's, from the app's own Origin only (the administrator has no app token), as POST
@@ -374,10 +358,7 @@ func (m mutation) SetPackHidden(ctx context.Context, id string, hidden bool) (bo
 	if !m.s.sameOrigin(c.r) {
 		return false, m.s.graphqlError(ctx, refused(http.StatusForbidden, "forbiddenRequest"))
 	}
-	if f := m.s.setHidden(c.r, id, hidden); f != nil {
-		return false, m.s.graphqlError(ctx, f)
-	}
-	return true, nil
+	return resolved(ctx, m.s, true, m.s.setHidden(c.r, id, hidden))
 }
 
 // optional is "" as null.

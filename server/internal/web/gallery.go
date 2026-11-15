@@ -111,7 +111,7 @@ func (s *server) gallery(w http.ResponseWriter, r *http.Request) {
 		answer.Packs = append(answer.Packs, galleryPackJSON{
 			ID: pack.ID, Name: pack.Name, Description: pack.Description, Category: pack.Category, Tags: pack.Tags,
 			Lists: pack.Lists, Words: pack.Words, Added: pack.Added,
-			UpdatedAt: pack.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z07:00"),
+			UpdatedAt: jsTime(pack.UpdatedAt),
 		})
 	}
 	reply(w, http.StatusOK, answer)

@@ -123,6 +123,13 @@ func methods(w http.ResponseWriter, r *http.Request, allow ...string) bool {
 	return false
 }
 
+// dropSession removes the session cookie of a browser. An app sends its token instead and has no cookie to remove.
+func (s *server) dropSession(w http.ResponseWriter, r *http.Request) {
+	if !fromApp(r) {
+		http.SetCookie(w, s.sessionCookie("", -1))
+	}
+}
+
 func (s *server) sessionCookie(value string, maxAge int) *http.Cookie {
 	return &http.Cookie{
 		Name: session.CookieName(s.secure()), Value: value, Path: "/", MaxAge: maxAge,
@@ -452,9 +459,7 @@ func (s *server) session(w http.ResponseWriter, r *http.Request) {
 		logOnly(r, err, "session.check")
 	}
 	if revoked {
-		if !fromApp(r) {
-			http.SetCookie(w, s.sessionCookie("", -1))
-		}
+		s.dropSession(w, r)
 		reply(w, http.StatusOK, answer)
 		return
 	}
@@ -494,9 +499,7 @@ func (s *server) signout(w http.ResponseWriter, r *http.Request) {
 			refuse(w, http.StatusServiceUnavailable, "databaseUnavailable")
 			return
 		case revoked:
-			if !fromApp(r) {
-				http.SetCookie(w, s.sessionCookie("", -1))
-			}
+			s.dropSession(w, r)
 			refuse(w, http.StatusUnauthorized, "loginRequired")
 			return
 		}

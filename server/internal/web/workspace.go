@@ -86,8 +86,8 @@ func (s *server) writeWorkspace(w http.ResponseWriter, r *http.Request) {
 // saveWorkspace saves the members of a PUT body for owner, and reads back the workspace as saved.
 func (s *server) saveWorkspace(r *http.Request, owner string, fields map[string]json.RawMessage) (*store.Saved, *failure) {
 	// The account is checked before the rest, so a screen that signed in as someone else is told so first.
-	if id, ok := accountID(fields); !ok || id != owner {
-		return nil, refused(http.StatusUnauthorized, "loginAccountChanged")
+	if f := sameAccount(fields, owner); f != nil {
+		return nil, f
 	}
 	revision, change, err := decodeFields(fields)
 	var refusal *workspace.Error

@@ -83,9 +83,7 @@ func (s *server) account(w http.ResponseWriter, r *http.Request) (session.Sessio
 		return session.Session{}, broken(err, "session.check", "databaseUnavailable")
 	}
 	if revoked {
-		if !fromApp(r) {
-			http.SetCookie(w, s.sessionCookie("", -1))
-		}
+		s.dropSession(w, r)
 		return session.Session{}, refused(http.StatusUnauthorized, "loginRequired")
 	}
 	return user, nil
