@@ -898,9 +898,10 @@ func TestPutSeveralLevelsWithoutPacksRealStore(t *testing.T) {
 	if response := h.put(owner, payload(owner, `"revision":0,"lists":[`+leveled(`["基本"," 初級 ","","1","2"]`)+`]`)); response.Code != http.StatusOK {
 		t.Fatalf("response = %d %s", response.Code, response.Body)
 	}
-	w, err := s.Read(context.Background(), owner)
-	if err != nil || len(w.Lists) != 1 || !slices.Equal(w.Lists[0].Levels, []string{"基本・初級・1・2"}) {
-		t.Fatalf("read = %+v, %v", w, err)
+	var lists []struct{ Levels []string }
+	if err := json.Unmarshal(decodeBody(t, h.get(owner))["lists"], &lists); err != nil || len(lists) != 1 ||
+		!slices.Equal(lists[0].Levels, []string{"基本・初級・1・2"}) {
+		t.Fatalf("lists = %+v, %v", lists, err)
 	}
 }
 

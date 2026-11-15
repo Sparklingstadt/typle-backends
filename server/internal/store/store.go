@@ -115,19 +115,6 @@ func (s *Store) Ping(ctx context.Context) error {
 
 func (s *Store) Close() { s.pool.Close() }
 
-// Read returns the owner's saved workspace, such as github:12345's. An account that has saved nothing yet has the
-// initial workspace, as in the app: empty since v0.98.0.
-func (s *Store) Read(ctx context.Context, owner string) (*workspace.Workspace, error) {
-	saved, err := readSaved(ctx, s.pool, owner)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return workspace.Initial()
-	}
-	if err != nil {
-		return nil, err
-	}
-	return decodeSaved(owner, saved.Lists, saved.Devices, saved.Packs)
-}
-
 // decodeSaved reads a workspace as it is stored, naming the owner whose saved data cannot be read.
 func decodeSaved(owner string, lists, devices, packs []byte) (*workspace.Workspace, error) {
 	w, err := workspace.Decode(lists, devices, packs)

@@ -168,14 +168,7 @@ func (s *server) stopSharing(r *http.Request, owner, packID string) *failure {
 // readShareBody reads a body that is {"packId": "<a pack id>"} with, optionally, "listed": true or false, and no other
 // member. Without "listed" it is nil: the listing in the gallery is left as it is. "listed": null is refused.
 func readShareBody(r *http.Request) (packID string, listed *bool, ok bool) {
-	if r.Body == nil || r.Body == http.NoBody {
-		return "", nil, false
-	}
-	body, err := readLimited(r.Body, maxShareBodyBytes)
-	if err != nil {
-		return "", nil, false
-	}
-	fields, err := parseObject(body)
+	fields, err := readObject(r, maxShareBodyBytes)
 	if err != nil {
 		return "", nil, false
 	}

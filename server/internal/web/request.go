@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -23,17 +24,14 @@ const maxBodyBytes = 1 << 20
 const maxSafeInteger = 1<<53 - 1
 
 var (
-	errTooLarge = errors.New("request body is too large")
-	errInvalid  = errors.New("request is not a valid workspace")
+	errTooLarge  = errors.New("request body is too large")
+	errInvalid   = errors.New("request is not a valid workspace")
+	errNoBody    = errors.New("request has no body")
+	errNotObject = errors.New("request body is not a JSON object")
 )
 
-// readBody reads the body, giving up as soon as it is past maxBodyBytes rather than after reading all of it: one byte
-// more than the limit is enough to know.
-func readBody(body io.Reader) ([]byte, error) {
-	return readLimited(body, maxBodyBytes)
-}
-
-// readLimited is readBody with another limit.
+// readLimited reads the body, giving up as soon as it is past limit rather than after reading all of it: one byte more
+// than the limit is enough to know.
 func readLimited(body io.Reader, limit int64) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(body, limit+1))
 	if err == nil && int64(len(data)) > limit {
@@ -51,6 +49,24 @@ func parseObject(body []byte) (map[string]json.RawMessage, error) {
 	}
 	if fields == nil {
 		return nil, errInvalid
+	}
+	return fields, nil
+}
+
+// readObject reads the request's body, of at most limit bytes, as one JSON object (parseObject). It fails with errNoBody
+// when there is no body, errTooLarge past the limit and errNotObject when the body is not an object; any other error is
+// the body's stream breaking. Each caller answers these as its route always has.
+func readObject(r *http.Request, limit int64) (map[string]json.RawMessage, error) {
+	if r.Body == nil || r.Body == http.NoBody {
+		return nil, errNoBody
+	}
+	body, err := readLimited(r.Body, limit)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := parseObject(body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errNotObject, err)
 	}
 	return fields, nil
 }
@@ -74,26 +90,21 @@ func (s *server) saveRequest(w http.ResponseWriter, r *http.Request, reported, i
 	if !ok {
 		return session.Session{}, nil, false
 	}
-	if r.Body == nil || r.Body == http.NoBody {
+	fields, err := readObject(r, maxBodyBytes)
+	switch {
+	case err == nil:
+		return user, fields, true
+	case errors.Is(err, errNoBody):
 		refuse(w, http.StatusBadRequest, "emptyRequest")
-		return session.Session{}, nil, false
-	}
-	body, err := readBody(r.Body)
-	if errors.Is(err, errTooLarge) {
+	case errors.Is(err, errTooLarge):
 		refuse(w, http.StatusRequestEntityTooLarge, "workspaceTooLarge")
-		return session.Session{}, nil, false
-	}
-	if err != nil {
+	case errors.Is(err, errNotObject):
+		refuse(w, http.StatusBadRequest, invalid)
+	default:
 		s.report(r, err, reported)
 		refuse(w, http.StatusServiceUnavailable, "workspaceSaveFailed")
-		return session.Session{}, nil, false
 	}
-	fields, err := parseObject(body)
-	if err != nil {
-		refuse(w, http.StatusBadRequest, invalid)
-		return session.Session{}, nil, false
-	}
-	return user, fields, true
+	return session.Session{}, nil, false
 }
 
 // The revision is judged before the lists, as in validateWorkspaceRequest. Saves of apps from before packs (lists

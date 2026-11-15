@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,7 +71,7 @@ func TestRecordsMoveOnFirstWrite(t *testing.T) {
 	id := owner(t, conn)
 	insertLegacy(t, conn, id, legacyLists)
 	s := open(t, connection)
-	before, err := s.Read(ctx, id)
+	before, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +92,7 @@ func TestRecordsMoveOnFirstWrite(t *testing.T) {
 	if strings.Join(keys, " ") != strings.Join(want, " ") || !split {
 		t.Fatalf("rows = %v, %v; want %v", keys, split, want)
 	}
-	after, err := s.Read(ctx, id)
+	after, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +207,7 @@ func TestRecordsLeftInLists(t *testing.T) {
 		WHERE owner_id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
-	read, err := s.Read(ctx, id)
+	read, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,62 +223,6 @@ func TestRecordsLeftInLists(t *testing.T) {
 	}
 	if stored, _, _ := row(t, conn, id); strings.Contains(stored, `"time"`) {
 		t.Fatalf("lists = %s", stored)
-	}
-}
-
-// A page of a list's records comes from the table when the table can answer for the list alone, and otherwise the
-// caller is told to read the workspace.
-func TestRecordPage(t *testing.T) {
-	ctx := context.Background()
-	connection, conn := database(t)
-	id := owner(t, conn)
-	insertLegacy(t, conn, id, legacyLists)
-	s := open(t, connection)
-	if _, ok, err := s.Records(ctx, id, "l1", nil, 10); ok || err != nil {
-		t.Fatalf("before the move: %v, %v", ok, err)
-	}
-	if _, err := s.Modify(ctx, id, createList("c")); err != nil {
-		t.Fatal(err)
-	}
-	page, ok, err := s.Records(ctx, id, "l1", nil, 3)
-	if !ok || err != nil {
-		t.Fatalf("page: %v, %v", ok, err)
-	}
-	ids := []string{}
-	for _, record := range page {
-		ids = append(ids, *record.ID)
-	}
-	repeated := legacyID("l1", 3, workspace.Record{Date: "2026-10-11T00:00:00.000Z", Time: 4})
-	if strings.Join(ids, " ") != "r2 "+repeated+" r1" {
-		t.Fatalf("page = %v", ids)
-	}
-	// The same records, in the same order and shape, as the workspace gives (api.records sorts them so).
-	full, _, _ := s.Records(ctx, id, "l1", nil, 100)
-	w, err := s.Read(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sorted := slices.Clone(w.Find("l1").Records)
-	slices.SortStableFunc(sorted, func(a, b workspace.Record) int { return b.At.Compare(a.At) })
-	gotJSON, _ := json.Marshal(full)
-	wantJSON, _ := json.Marshal(sorted)
-	if string(gotJSON) != string(wantJSON) {
-		t.Fatalf("page = %s; workspace = %s", gotJSON, wantJSON)
-	}
-	since := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
-	if page, ok, _ := s.Records(ctx, id, "l1", &since, 10); !ok || len(page) != 1 || *page[0].ID != "r2" {
-		t.Fatalf("since: %+v, %v", page, ok)
-	}
-	if page, ok, _ := s.Records(ctx, id, "c-missing", nil, 10); ok || page != nil {
-		t.Fatalf("missing list: %+v, %v", page, ok)
-	}
-	// A list that still holds records of its own is read with the workspace.
-	if _, err := conn.Exec(ctx, `UPDATE typle_workspaces SET lists = jsonb_set(lists, '{0,records}',
-		'[{"id":"own","time":1,"date":"2026-10-01T00:00:00.000Z"}]') WHERE owner_id = $1`, id); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok, _ := s.Records(ctx, id, "l1", nil, 10); ok {
-		t.Fatal("a list with records of its own was answered from the table")
 	}
 }
 
@@ -521,7 +464,7 @@ func TestFollowedWordsNotSaved(t *testing.T) {
 				t.Fatalf("stored lists = %s", raw)
 			}
 		}
-		w, err := s.Read(ctx, id)
+		w, err := s.read(ctx, id)
 		if err != nil {
 			t.Fatal(err)
 		}

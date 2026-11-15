@@ -22,7 +22,7 @@ func saved(t *testing.T, s *Store, owner string) *workspace.Workspace {
 			t.Fatal(err)
 		}
 	}
-	w, err := s.Read(ctx, owner)
+	w, err := s.read(ctx, owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestModifyWithoutRowDeletesShares(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	w, err := s.Read(ctx, id)
+	w, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestWriteRevisionListsOnlyDeletesSharesOfDerivedPacks(t *testing.T) {
 	if _, err := s.WriteRevision(ctx, id, 0, Change{Lists: old, HasLists: true}); err != nil {
 		t.Fatal(err)
 	}
-	w, err := s.Read(ctx, id)
+	w, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestPutShareTooLarge(t *testing.T) {
 	if _, err := conn.Exec(ctx, `INSERT INTO typle_workspaces (owner_id, lists) VALUES ($1, $2)`, id, string(encoded)); err != nil {
 		t.Fatal(err)
 	}
-	w, err := s.Read(ctx, id)
+	w, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}

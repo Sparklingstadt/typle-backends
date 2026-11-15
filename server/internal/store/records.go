@@ -267,45 +267,6 @@ func beforeRows(stored []recordRow) (map[recordKey]recordRow, error) {
 	return before, nil
 }
 
-// Records returns a page of one list's records, newest first (and in their saved order on the same date), read from
-// typle_records alone: those after since, at most limit. ok is false when the table cannot answer for the list by
-// itself: the workspace's records have not moved, the list is not saved as the workspace shows it (it follows an
-// official pack, which the catalog may change), or it still holds records of its own. The caller then reads the whole
-// workspace instead.
-func (s *Store) Records(ctx context.Context, owner, listID string, since *time.Time, limit int) (records []workspace.Record, ok bool, err error) {
-	rows, err := s.pool.Query(ctx, `WITH w AS (SELECT records_split AND jsonb_path_exists(lists,
-			'$[*] ? (@.id == $id && !exists(@.origin) && @.records.size() == 0)', jsonb_build_object('id', $2::text)) AS ok
-			FROM typle_workspaces WHERE owner_id = $1)
-		SELECT w.ok, r.data::text FROM w LEFT JOIN LATERAL (SELECT data FROM typle_records WHERE owner_id = $1 AND list_id = $2
-			AND ($3::timestamptz IS NULL OR at > $3) ORDER BY at DESC, position LIMIT $4) r ON w.ok`, owner, listID, since, limit)
-	if err != nil {
-		return nil, false, err
-	}
-	defer rows.Close()
-	records = []workspace.Record{}
-	for rows.Next() {
-		var data []byte
-		if err := rows.Scan(&ok, &data); err != nil {
-			return nil, false, err
-		}
-		if data == nil {
-			continue
-		}
-		record, err := workspace.DecodeRecord(data)
-		if err != nil {
-			return nil, false, fmt.Errorf("record of list %s of %s: %w", listID, owner, err)
-		}
-		records = append(records, record)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, false, err
-	}
-	if !ok {
-		return nil, false, nil
-	}
-	return records, true, nil
-}
-
 // forgetRecords deletes the owner's rows of typle_records when its workspace row is created. Rows can only be left from
 // a workspace row deleted without them (as the tests do), and must not show in lists of the same ids.
 func forgetRecords(ctx context.Context, tx pgx.Tx, owner string) error {

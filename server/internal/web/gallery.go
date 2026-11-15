@@ -187,14 +187,7 @@ const maxIDBodyBytes = 4 << 10
 // readStringFields reads a body that is a JSON object with exactly the string members names, none of them empty or
 // null, and no other member.
 func readStringFields(r *http.Request, limit int64, names ...string) (map[string]string, bool) {
-	if r.Body == nil || r.Body == http.NoBody {
-		return nil, false
-	}
-	body, err := readLimited(r.Body, limit)
-	if err != nil {
-		return nil, false
-	}
-	fields, err := parseObject(body)
+	fields, err := readObject(r, limit)
 	if err != nil || len(fields) != len(names) {
 		return nil, false
 	}

@@ -18,6 +18,20 @@ import (
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
 
+// read returns the owner's saved workspace, such as github:12345's. An account that has saved nothing yet has the
+// initial workspace, as in the app: empty since v0.98.0. Only the tests read a workspace whole like this; the server
+// reads it as it changes it (Modify) or as the app asks for it (ReadRevision).
+func (s *Store) read(ctx context.Context, owner string) (*workspace.Workspace, error) {
+	saved, err := readSaved(ctx, s.pool, owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return workspace.Initial()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return decodeSaved(owner, saved.Lists, saved.Devices, saved.Packs)
+}
+
 func TestConnString(t *testing.T) {
 	cases := map[string]string{
 		"postgres://u:p@h/db":                                         "postgres://u:p@h/db?sslmode=verify-full",
@@ -101,7 +115,7 @@ func TestReadSavedWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	w, err := s.Read(ctx, id)
+	w, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +124,7 @@ func TestReadSavedWorkspace(t *testing.T) {
 	}
 
 	// Each account reads only its own row.
-	if w, err := s.Read(ctx, other); err != nil || len(w.Lists) != 0 {
+	if w, err := s.read(ctx, other); err != nil || len(w.Lists) != 0 {
 		t.Fatalf("other = %+v, %v", w, err)
 	}
 }
@@ -124,7 +138,7 @@ func TestReadWithoutRowGivesInitialWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	w, err := s.Read(ctx, owner(t, conn))
+	w, err := s.read(ctx, owner(t, conn))
 	if err != nil || w.Lists == nil || w.Packs == nil || len(w.Lists) != 0 || len(w.Packs) != 0 {
 		t.Fatalf("workspace = %+v, %v", w, err)
 	}
@@ -142,7 +156,7 @@ func TestReadRefusesDataTheAppRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, err := s.Read(ctx, id); err == nil {
+	if _, err := s.read(ctx, id); err == nil {
 		t.Fatal("read an invalid workspace")
 	}
 }
@@ -210,7 +224,7 @@ func TestModifyCreatesRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	read, err := s.Read(ctx, id)
+	read, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +343,7 @@ func TestModifyConcurrent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	w, err := s.Read(ctx, id)
+	w, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +412,7 @@ func TestModifyWritesDevices(t *testing.T) {
 	if devices != `[{"id": "d2", "name": "会社", "layout": ""}]` {
 		t.Fatalf("devices = %s", devices)
 	}
-	w, err := s.Read(ctx, id)
+	w, err := s.read(ctx, id)
 	if err != nil || len(w.Devices) != 1 || w.Lists[0].Records[0].Device.Name != "自宅" {
 		t.Fatalf("workspace = %+v, %v", w, err)
 	}
@@ -990,7 +1004,7 @@ func TestModifyWritesPacks(t *testing.T) {
 	if len(packs) != len(initial.Packs)+1 || packs[len(packs)-1].ID != "pack-"+created || packs[len(packs)-1].Name != "動物" {
 		t.Fatalf("packs = %+v", packs)
 	}
-	read, err := s.Read(ctx, id)
+	read, err := s.read(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
