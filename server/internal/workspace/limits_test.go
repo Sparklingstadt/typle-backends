@@ -26,6 +26,7 @@ func TestLimitsMatchTheApp(t *testing.T) {
 		"MAX_LEVELS": MaxLevels, "MAX_SAVED_LEVELS": MaxSavedLevels, "MAX_LEVEL": MaxLevel, "MAX_INTERESTS": MaxInterests,
 		"MAX_INTEREST_LENGTH": MaxInterestLength, "MAX_PACK_NAME": MaxPackName, "MAX_PACK_DESCRIPTION": MaxPackDescription,
 		"MAX_DEVICES": maxDevices, "MAX_MISSED_WORDS": MaxMissedWords, "MAX_DEVICE_NAME": maxDeviceName, "MAX_DEVICE_LAYOUT": maxDeviceLayout,
+		"MAX_WORD_TEXT": MaxWordText, "MAX_ANNOTATION": MaxAnnotation, "MAX_RECORD_ID": maxRecordID,
 	}
 	if !maps.Equal(got, want) {
 		t.Fatalf("limits = %v, want %v", got, want)
