@@ -150,8 +150,7 @@ func (s *server) deleteShare(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, f)
 		return
 	}
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.WriteHeader(http.StatusNoContent)
+	noContent(w)
 }
 
 // stopSharing stops sharing the owner's pack packID; a pack that is not shared is answered the same.

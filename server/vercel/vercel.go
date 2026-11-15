@@ -221,28 +221,11 @@ func (b *Backend) publicHandler() http.Handler {
 	}
 	source := b.database()
 	if source == nil {
-		return noindex(databaseUnavailable)
+		return web.NoIndex(databaseUnavailable)
 	}
 	handler := web.Public(source, web.NewReporter(os.Getenv))
 	b.public.CompareAndSwap(nil, &handler)
 	return *b.public.Load()
-}
-
-// noindex answers as next does, with X-Robots-Tag: noindex, as every answer of /api/shared and the gallery has, and with
-// Cache-Control: no-store.
-func noindex(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Robots-Tag", "noindex")
-		next.ServeHTTP(noStore{w}, r)
-	})
-}
-
-// noStore makes the answer carry Cache-Control: no-store, over the private, no-store that the handlers write.
-type noStore struct{ http.ResponseWriter }
-
-func (w noStore) WriteHeader(status int) {
-	w.Header().Set("Cache-Control", "no-store")
-	w.ResponseWriter.WriteHeader(status)
 }
 
 // databaseHandler serves /api/workspace, /api/shares, /api/admin/* and any other path outside /api/auth/, /api/health,

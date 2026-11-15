@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/sparklingstadt/typle-r/server/internal/auth"
@@ -158,13 +157,10 @@ func (s *server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.allowAdmin(w, r); !ok {
 		return
 	}
-	page := 0
-	if value := r.URL.Query().Get("page"); value != "" {
-		var err error
-		if page, err = strconv.Atoi(value); err != nil {
-			refuse(w, http.StatusBadRequest, "invalidPage")
-			return
-		}
+	page, ok := queryPage(r, 0)
+	if !ok {
+		refuse(w, http.StatusBadRequest, "invalidPage")
+		return
 	}
 	users, f := s.usersPage(r, page)
 	if f != nil {

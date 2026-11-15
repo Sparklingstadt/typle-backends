@@ -202,11 +202,7 @@ func (q query) Gallery(ctx context.Context, text, category string, sort graph.Ga
 	if f != nil {
 		return nil, q.s.graphqlError(ctx, f)
 	}
-	packs := result.Packs
-	if packs == nil {
-		packs = []store.GalleryPack{}
-	}
-	return &graph.GalleryPage{Packs: packs, More: result.More}, nil
+	return &graph.GalleryPage{Packs: result.Packs, More: result.More}, nil
 }
 
 // GalleryCategories is read by anyone, signed in or not.

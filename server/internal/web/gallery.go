@@ -50,17 +50,32 @@ func galleryHeaders(w http.ResponseWriter) http.ResponseWriter {
 	return noStore{w}
 }
 
+// NoIndex answers as next does, with the headers of galleryHeaders, for an answer made outside this package that must
+// look like the gallery's and /api/shared's (server/vercel's 503 when the database cannot be reached).
+func NoIndex(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(galleryHeaders(w), r)
+	})
+}
+
+// queryPage reads the query's page, which is fallback when it is left out. ok is false when it is not a number.
+func queryPage(r *http.Request, fallback int) (page int, ok bool) {
+	value := r.URL.Query().Get("page")
+	if value == "" {
+		return fallback, true
+	}
+	page, err := strconv.Atoi(value)
+	return page, err == nil
+}
+
 // galleryQuery reads ?q=&category=&sort=&page=. q is trimmed and cut to store.MaxGalleryQuery runes; sort is "new" (the
 // default) or "popular"; page is a number from 1 to maxGalleryPage (the default is 1). q and category must be valid
 // UTF-8 without NUL, which the database would refuse.
 func galleryQuery(r *http.Request) (store.GalleryQuery, bool) {
 	values := r.URL.Query()
-	page := 1
-	if value := values.Get("page"); value != "" {
-		var err error
-		if page, err = strconv.Atoi(value); err != nil {
-			return store.GalleryQuery{}, false
-		}
+	page, ok := queryPage(r, 1)
+	if !ok {
+		return store.GalleryQuery{}, false
 	}
 	return checkGalleryQuery(values.Get("q"), values.Get("category"), store.GallerySort(values.Get("sort")), page)
 }
@@ -122,6 +137,10 @@ func (s *server) galleryPage(r *http.Request, query store.GalleryQuery) (*store.
 	page, err := s.config.Store.Gallery(r.Context(), query)
 	if err != nil {
 		return nil, broken(err, "gallery.read", "databaseUnavailable")
+	}
+	// An empty page answers [], never null, in REST and GraphQL alike.
+	if page.Packs == nil {
+		page.Packs = []store.GalleryPack{}
 	}
 	return page, nil
 }
