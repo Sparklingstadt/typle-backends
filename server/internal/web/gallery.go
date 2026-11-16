@@ -139,7 +139,7 @@ func (s *server) galleryPage(r *http.Request, query store.GalleryQuery) (*store.
 	if err != nil {
 		return nil, broken(err, "gallery.read", "databaseUnavailable")
 	}
-	// An empty page answers [], never null, in REST and GraphQL alike.
+	// An empty page answers [], never null.
 	if page.Packs == nil {
 		page.Packs = []store.GalleryPack{}
 	}

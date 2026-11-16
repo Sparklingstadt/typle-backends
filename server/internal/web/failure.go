@@ -3,8 +3,7 @@ package web
 import "net/http"
 
 // failure is a request refused: the status and the error key it is answered with. A failure of the server (a 503) also
-// has the error to report, with the operation that failed. The REST handlers answer it with refuse (fail), and
-// /api/graphql as a GraphQL error with the same key and status (graphqlError).
+// has the error to report, with the operation that failed. The handlers answer it with refuse (fail).
 type failure struct {
 	status    int
 	key       string
