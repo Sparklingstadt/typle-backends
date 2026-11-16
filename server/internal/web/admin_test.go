@@ -33,7 +33,7 @@ func (a *adminStore) Admin(_ context.Context, email, sub string) (bool, error) {
 // newAdminHarness is newLoginHarness with the administrator's FFPF ID account and the store a.
 func newAdminHarness(t *testing.T, base string, a *adminStore) *loginHarness {
 	t.Helper()
-	h := newLoginHarness(t, base, false)
+	h := newLoginHarness(t, base)
 	h.ffpf.user = auth.FFPFUser{Sub: "cadmin", Email: "Admin@Example.com", Name: "Admin"}
 	parsed, _ := url.Parse(base)
 	h.handler = New(Config{
@@ -164,7 +164,7 @@ func TestAdminCallbackRefuses(t *testing.T) {
 
 // Without a database to ask, nobody becomes the administrator: the login ends with adminUnavailable.
 func TestAdminCallbackWithoutDatabase(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	h.ffpf.user = auth.FFPFUser{Sub: "cadmin", Email: "admin@example.com", Name: "Admin"}
 	h.handler = New(Config{Keys: h.keys, BaseURL: mustURL(t, testBase), FFPF: h.ffpf, Now: func() time.Time { return h.now },
 		Report: func(_ *http.Request, err error, operation string) { h.reports = append(h.reports, operation) }})
@@ -208,19 +208,5 @@ func TestAdminCallbackNotThroughGitHub(t *testing.T) {
 	}
 	if h.oauth.exchanges != 0 || h.users.calls != 0 || a.checks != 0 {
 		t.Fatalf("exchanges = %d, users = %d, checks = %d", h.oauth.exchanges, h.users.calls, a.checks)
-	}
-}
-
-func TestAdminSignout(t *testing.T) {
-	h := newAdminHarness(t, testBase, &adminStore{})
-	expectError(t, h.do(http.MethodPost, "/api/auth/admin/signout"), http.StatusForbidden, "forbiddenRequest")
-	expectError(t, h.do(http.MethodGet, "/api/auth/admin/signout"), http.StatusMethodNotAllowed, "methodNotAllowed")
-	response := h.do(http.MethodPost, "/api/auth/admin/signout", withOrigin(testBase))
-	c := findCookie(response, session.AdminCookieName(false))
-	if response.Code != http.StatusNoContent || c == nil || c.MaxAge >= 0 || c.SameSite != http.SameSiteStrictMode {
-		t.Fatalf("signout = %d %+v", response.Code, c)
-	}
-	if relogin := findCookie(response, reloginCookie); relogin == nil || relogin.Value != "1" || relogin.MaxAge <= 0 {
-		t.Fatalf("relogin cookie = %+v", relogin)
 	}
 }

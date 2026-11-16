@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
@@ -35,11 +34,3 @@ func TestNotFound(t *testing.T) {
 }
 
 func (f fakeStore) Admin(context.Context, string, string) (bool, error) { return false, f.err }
-
-// No account has signed out of every device, whatever err is, so that a test of another failure fails where it means
-// to; revocations_test.go has its own store for them.
-func (f fakeStore) SessionsRevokedAt(context.Context, string) (time.Time, error) {
-	return time.Time{}, nil
-}
-
-func (f fakeStore) RevokeSessions(context.Context, string) error { return f.err }

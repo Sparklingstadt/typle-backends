@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sparklingstadt/typle-r/server/internal/session"
 	"github.com/sparklingstadt/typle-r/server/internal/web"
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
@@ -34,12 +33,6 @@ func (fakeStore) Modify(context.Context, string, func(*workspace.Workspace) (boo
 }
 
 func (fakeStore) Admin(context.Context, string, string) (bool, error) { return false, nil }
-
-// No account has signed out of every device.
-func (fakeStore) SessionsRevokedAt(context.Context, string) (time.Time, error) {
-	return time.Time{}, nil
-}
-func (fakeStore) RevokeSessions(context.Context, string) error { return nil }
 
 func settings(t *testing.T) {
 	t.Helper()
@@ -71,6 +64,16 @@ func serve(t *testing.T) *httptest.ResponseRecorder {
 	return get(probe)
 }
 
+// expectGitHub fails unless response sends the browser to GitHub's authorize URL: the auth part is built and signin
+// starts a GitHub login.
+func expectGitHub(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+	if location := response.Header().Get("Location"); response.Code != http.StatusFound ||
+		!strings.HasPrefix(location, "https://github.com/login/oauth/authorize?") {
+		t.Fatalf("signin = %d %q, want a redirect to GitHub", response.Code, location)
+	}
+}
+
 func expect(t *testing.T, response *httptest.ResponseRecorder, status int, body string) {
 	t.Helper()
 	if response.Code != status || strings.TrimSpace(response.Body.String()) != body {
@@ -79,7 +82,7 @@ func expect(t *testing.T, response *httptest.ResponseRecorder, status int, body 
 }
 
 // Without the login settings the auth paths and the workspace say authUnavailable, without opening the database, and
-// nothing panics (a zero web.Config would panic on the first session). Nothing of the failure is kept: once the
+// nothing panics (a zero web.Config would panic on the first login). Nothing of the failure is kept: once the
 // settings are there, the next request is served.
 func TestHandlerWithoutSecret(t *testing.T) {
 	reset(t)
@@ -88,7 +91,7 @@ func TestHandlerWithoutSecret(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { opened.Add(1); return fakeStore{}, nil }
 	t.Setenv("AUTH_SECRET", "")
 
-	expect(t, get("/api/auth/session"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
+	expect(t, get("/api/auth/signin"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 	expect(t, get("/api/auth/callback/github?code=x&state=y"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 	expect(t, get("/api/auth/callback/ffpf?code=x&state=y"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
@@ -97,7 +100,7 @@ func TestHandlerWithoutSecret(t *testing.T) {
 	}
 
 	t.Setenv("AUTH_SECRET", "secret")
-	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
+	expectGitHub(t, get("/api/auth/signin"))
 	expect(t, get(probe), http.StatusNotFound, `{"error":"notFound"}`)
 	if opened.Load() != 1 {
 		t.Fatalf("the database was opened %d times", opened.Load())
@@ -109,11 +112,11 @@ func TestHandlerInvalidAuthURL(t *testing.T) {
 	settings(t)
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	t.Setenv("AUTH_URL", "ftp://x")
-	expect(t, get("/api/auth/session"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
+	expect(t, get("/api/auth/signin"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 }
 
 // While the database does not open, the probe and /api/workspace say databaseUnavailable, and the auth paths are
-// answered all the same: they need no database, and a signed-in user stays signed in.
+// answered all the same: they need no database, so a login still starts.
 func TestHandlerDatabaseDown(t *testing.T) {
 	reset(t)
 	settings(t)
@@ -122,7 +125,7 @@ func TestHandlerDatabaseDown(t *testing.T) {
 	for _, path := range []string{probe} {
 		expect(t, get(path), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	}
-	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
+	expectGitHub(t, get("/api/auth/signin"))
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get(probe), http.StatusNotFound, `{"error":"notFound"}`)
 }
@@ -133,7 +136,8 @@ func TestAuthDoesNotOpenTheDatabase(t *testing.T) {
 	settings(t)
 	var opened atomic.Int32
 	backend.open = func(context.Context, string) (web.Store, error) { opened.Add(1); return nil, errors.New("down") }
-	for _, path := range []string{"/api/auth/session", "/api/auth/signin", "/api/auth/signout", "/api/auth/token", "/api/auth/admin/signout"} {
+	// The paths that moved to Next.js are answered too (notFound), without the database.
+	for _, path := range []string{"/api/auth/signin", "/api/auth/callback/github?code=x&state=y", "/api/auth/session", "/api/auth/token"} {
 		if code := get(path).Code; code == http.StatusServiceUnavailable {
 			t.Errorf("%s = %d", path, code)
 		}
@@ -168,62 +172,15 @@ func TestLazyAdmins(t *testing.T) {
 	}
 }
 
-// The revocations of the /api/auth part: the session's answer reads them only from a database that is already open,
-// and never opens it; signing out of every device opens it, as an administrator's login does.
-func TestLazySessions(t *testing.T) {
-	reset(t)
-	settings(t)
-	backend.retryAfter = 0
-	var opened atomic.Int32
-	backend.open = func(context.Context, string) (web.Store, error) { opened.Add(1); return nil, errors.New("down") }
-	sessions := lazySessions{backend}
-	if _, err := sessions.SessionsRevokedAt(context.Background(), "github:1"); !errors.Is(err, web.ErrSessionsUnchecked) {
-		t.Fatalf("SessionsRevokedAt before the database is open = %v", err)
-	}
-	if opened.Load() != 0 {
-		t.Fatalf("reading the revocations opened the database %d times", opened.Load())
-	}
-	if err := sessions.RevokeSessions(context.Background(), "github:1"); err == nil {
-		t.Fatal("RevokeSessions with the database down succeeded")
-	}
-	backend.open = func(context.Context, string) (web.Store, error) { opened.Add(1); return fakeStore{}, nil }
-	if err := sessions.RevokeSessions(context.Background(), "github:1"); err != nil {
-		t.Fatal(err)
-	}
-	if revokedAt, err := sessions.SessionsRevokedAt(context.Background(), "github:1"); err != nil || !revokedAt.IsZero() {
-		t.Fatalf("SessionsRevokedAt once open = %v, %v", revokedAt, err)
-	}
-	if opened.Load() != 2 {
-		t.Fatalf("opened %d times", opened.Load())
-	}
-}
-
-// With a database that cannot be reached at all: the session answers, with the user of a valid cookie, while the
-// workspace says databaseUnavailable. Auth.js answered sessions without the database too, and a first session read that
-// keeps failing leaves the screen signed out, so it must not fail with the database.
-func TestHandlerSessionWithUnreachableDatabase(t *testing.T) {
+// With a database that cannot be reached at all: a login still starts, while the database part says
+// databaseUnavailable. The auth part never waits for the database.
+func TestHandlerSigninWithUnreachableDatabase(t *testing.T) {
 	reset(t)
 	settings(t)
 	t.Setenv("DATABASE_URL", "postgresql://typle@127.0.0.1:1/typle?connect_timeout=1")
-	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
-
-	keys, err := session.NewKeys("secret")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cookie := &http.Cookie{Name: session.CookieName(true), Value: keys.Seal(session.New("github:1", "Octo", "https://avatars.test/1", time.Now()))}
-	request := httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
-	request.AddCookie(cookie)
-	response := httptest.NewRecorder()
-	backend.ServeHTTP(response, request)
-	expect(t, response, http.StatusOK, `{"user":{"id":"github:1","name":"Octo","image":"https://avatars.test/1"},"providers":["github"]}`)
-
-	request = httptest.NewRequest(http.MethodGet, probe, nil)
-	request.AddCookie(cookie)
-	response = httptest.NewRecorder()
-	backend.ServeHTTP(response, request)
-	expect(t, response, http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
+	expectGitHub(t, get("/api/auth/signin"))
 	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
+	expectGitHub(t, get("/api/auth/signin"))
 }
 
 // Without the GitHub OAuth App the functions are served: only signin says authUnavailable.
@@ -233,7 +190,6 @@ func TestHandlerWithoutGitHub(t *testing.T) {
 	t.Setenv("AUTH_GITHUB_ID", "")
 	t.Setenv("AUTH_GITHUB_SECRET", "")
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":[]}`)
 	expect(t, get("/api/auth/signin"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 	expect(t, get(probe), http.StatusNotFound, `{"error":"notFound"}`)
 }
@@ -242,7 +198,7 @@ func TestHandlerWithoutGitHub(t *testing.T) {
 func TestAuthHandlerBuiltIsKept(t *testing.T) {
 	reset(t)
 	settings(t)
-	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
+	expectGitHub(t, get("/api/auth/signin"))
 	first := backend.authHandler()
 	t.Setenv("AUTH_SECRET", "")
 	backend.mu.Lock()
@@ -389,7 +345,7 @@ func TestHandlerRealDatabase(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("POSTGRES_URL", connection)
 	expect(t, serve(t), http.StatusNotFound, `{"error":"notFound"}`)
-	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
+	expectGitHub(t, get("/api/auth/signin"))
 }
 
 func TestHandlerUnreachableDatabase(t *testing.T) {

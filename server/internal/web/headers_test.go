@@ -25,15 +25,14 @@ func checkSecurityHeaders(t *testing.T, name string, header http.Header) {
 
 // Next.js's headers do not apply to the Go functions on Vercel, so each kind of response carries them itself.
 func TestSecurityHeaders(t *testing.T) {
-	h := newLoginHarness(t, testBase, true)
+	h := newLoginHarness(t, testBase)
 	cases := []struct {
 		name, method, target string
 		status               int
 	}{
-		{"forbidden", http.MethodPost, "/api/auth/admin/signout", http.StatusForbidden},
-		{"session", http.MethodGet, "/api/auth/session", http.StatusOK},
 		{"redirect", http.MethodGet, "/api/auth/signin?returnTo=" + url.QueryEscape("/lists"), http.StatusFound},
-		{"method not allowed", http.MethodDelete, "/api/auth/admin/signout", http.StatusMethodNotAllowed},
+		{"callback redirect", http.MethodGet, "/api/auth/callback/github?code=c&state=s", http.StatusFound},
+		{"method not allowed", http.MethodPut, "/api/auth/signin", http.StatusMethodNotAllowed},
 		{"not found", http.MethodGet, "/nowhere", http.StatusNotFound},
 	}
 	for _, tc := range cases {
@@ -55,15 +54,14 @@ func TestUnavailableSecurityHeaders(t *testing.T) {
 
 // Every JSON answer, error or not, is written by one helper: not kept by any cache, and varying with the cookie.
 func TestJSONHeadersUniform(t *testing.T) {
-	h := newLoginHarness(t, testBase, true)
+	h := newLoginHarness(t, testBase)
 	responses := map[string]*httptest.ResponseRecorder{
 		"not found":          h.do(http.MethodGet, "/nowhere"),
-		"method not allowed": h.do(http.MethodDelete, "/api/workspace"),
-		"login method":       h.do(http.MethodPut, "/api/auth/session"),
-		"token refused":      h.do(http.MethodPost, "/api/auth/token"),
+		"method not allowed": h.do(http.MethodPut, "/api/auth/signin"),
+		"callback method":    h.do(http.MethodPost, "/api/auth/callback/ffpf"),
 		"unavailable":        get(t, Unavailable("databaseUnavailable"), http.MethodGet, "/api/workspace"),
 		"login missing":      get(t, New(Config{Store: fakeStore{}}), http.MethodGet, "/api/auth/signin"),
-		"local login off":    get(t, New(Config{Store: fakeStore{}}), http.MethodPost, "/api/auth/local"),
+		"callback missing":   get(t, New(Config{Store: fakeStore{}}), http.MethodGet, "/api/auth/callback/ffpf?code=c&state=s"),
 	}
 	for name, response := range responses {
 		header := response.Header()

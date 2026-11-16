@@ -67,18 +67,3 @@ func (s *server) isAdmin(ctx context.Context, email, sub string) (bool, error) {
 	}
 	return false, errNoAdmins
 }
-
-// adminSignout forgets the administrator's cookie. Like signout, it needs the app's own Origin, and it marks the browser
-// the same way (reloginCookie).
-func (s *server) adminSignout(w http.ResponseWriter, r *http.Request) {
-	if !methods(w, r, http.MethodPost) {
-		return
-	}
-	if !s.sameOrigin(r) {
-		refuse(w, http.StatusForbidden, "forbiddenRequest")
-		return
-	}
-	http.SetCookie(w, s.adminCookie("", -1))
-	http.SetCookie(w, s.relogin(int(session.MaxAge.Seconds())))
-	noContent(w)
-}

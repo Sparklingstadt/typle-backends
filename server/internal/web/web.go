@@ -17,7 +17,6 @@ import (
 type Store interface {
 	Ping(ctx context.Context) error
 	Admin(ctx context.Context, email, sub string) (bool, error)
-	SessionSource
 }
 
 // OAuthClient is the GitHub OAuth App the login goes through (auth.OAuth).
@@ -42,13 +41,6 @@ type AdminSource interface {
 	Admin(ctx context.Context, email, sub string) (bool, error)
 }
 
-// SessionSource keeps when each account last signed out of every device (store.Store.RevokeSessions and
-// SessionsRevokedAt).
-type SessionSource interface {
-	RevokeSessions(ctx context.Context, owner string) error
-	SessionsRevokedAt(ctx context.Context, owner string) (time.Time, error)
-}
-
 // Config holds what the handlers depend on.
 type Config struct {
 	Store Store
@@ -69,13 +61,6 @@ type Config struct {
 	// nil, Store is asked. It lets the /api/auth part, which has no Store so that the session never waits for the
 	// database (server/vercel), open the database for this one question only.
 	Admins AdminSource
-	// Sessions is asked whether a session has been revoked (signed out of every device), and told when one is. When
-	// nil, Store is. As with Admins, it lets the /api/auth part ask without a Store: there, SessionsRevokedAt may fail
-	// when the database is not open yet, and only the session's answer goes on unchecked (see session).
-	Sessions SessionSource
-	// LocalLogin turns on POST /api/auth/local, which signs in as a made-up local account for development. Off, the
-	// path does not exist.
-	LocalLogin bool
 	// Report is told of a failure that is answered with a 503, with the operation that failed (such as
 	// "workspace.read"), so that it can be sent to an error tracker. When nil the failure is only logged.
 	Report func(r *http.Request, err error, operation string)
@@ -92,11 +77,6 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("/api/auth/signin", s.signin)
 	mux.HandleFunc(githubCallback, s.callback(providerGitHub))
 	mux.HandleFunc(ffpfCallback, s.callback(providerFFPF))
-	mux.HandleFunc("/api/auth/session", s.session)
-	mux.HandleFunc("/api/auth/token", s.token)
-	mux.HandleFunc("/api/auth/signout", s.signout)
-	mux.HandleFunc("/api/auth/local", s.localLogin)
-	mux.HandleFunc("/api/auth/admin/signout", s.adminSignout)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { refuse(w, http.StatusNotFound, "notFound") })
 	return withSecurityHeaders(mux)
 }

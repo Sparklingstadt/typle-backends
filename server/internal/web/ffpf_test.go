@@ -37,7 +37,7 @@ func (h *loginHarness) ffpfCallback(query string, cookie *http.Cookie) *httptest
 }
 
 func TestFFPFSignin(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	response := h.do(http.MethodGet, "/api/auth/signin?provider=ffpf&returnTo=%2Fplay")
 	if response.Code != http.StatusFound || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("signin = %d %v", response.Code, response.Header())
@@ -73,7 +73,7 @@ func TestFFPFSignin(t *testing.T) {
 // A browser that signed out asks FFPF ID for the password on its next login (prompt=login), whether it then signs in to
 // the app or to the dashboard, and only until it signs in with FFPF ID. One that did not sign out does not.
 func TestFFPFSigninAfterSignout(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	h.ffpfSignin(t, "")
 	if h.ffpf.login {
 		t.Fatal("prompt=login without a signout")
@@ -109,7 +109,7 @@ func TestFFPFSigninAfterSignout(t *testing.T) {
 // Without provider, or with any other value, the login is GitHub's, and its OAuth cookie has neither a provider nor a
 // nonce, so it is the same as before FFPF ID.
 func TestSigninDefaultsToGitHub(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	for _, query := range []string{"", "?provider=github", "?provider=FFPF", "?provider="} {
 		response := h.do(http.MethodGet, "/api/auth/signin"+query)
 		if location := response.Header().Get("Location"); !strings.HasPrefix(location, "https://github.test/") {
@@ -126,7 +126,7 @@ func TestSigninDefaultsToGitHub(t *testing.T) {
 }
 
 func TestFFPFCallbackSuccess(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	cookie, opened := h.ffpfSignin(t, "&returnTo=%2Fplay")
 	response := h.ffpfCallback("code=the-code&state="+url.QueryEscape(opened.State), cookie)
 	if response.Code != http.StatusFound || response.Header().Get("Location") != "/play" {
@@ -155,7 +155,7 @@ func TestFFPFCallbackSuccess(t *testing.T) {
 // A login that one provider started does not finish at the other's callback: nobody is signed in, and neither provider
 // is asked for the code.
 func TestCallbackOfAnotherProvider(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	github := h.signin(t, "/lists")
 	githubState, _ := h.keys.OpenOAuth(github.Value, h.now)
 	response := h.ffpfCallback("code=c&state="+url.QueryEscape(githubState.State), github)
@@ -181,7 +181,7 @@ func TestCallbackOfAnotherProvider(t *testing.T) {
 }
 
 func TestFFPFCallbackRefuses(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	for name, query := range map[string]func(state string) string{
 		"wrong state": func(string) string { return "code=c&state=other" },
 		"no code":     func(s string) string { return "state=" + s },
@@ -213,7 +213,7 @@ func TestFFPFCallbackFails(t *testing.T) {
 		{auth.ErrFFPFRejected, 0},
 		{fmt.Errorf("ID token: %w", auth.ErrFFPFRejected), 0},
 	} {
-		h := newLoginHarness(t, testBase, false)
+		h := newLoginHarness(t, testBase)
 		h.ffpf.err = c.err
 		cookie, opened := h.ffpfSignin(t, "&returnTo=%2Fplay")
 		response := h.ffpfCallback("code=c&state="+url.QueryEscape(opened.State), cookie)
@@ -229,9 +229,9 @@ func TestFFPFCallbackFails(t *testing.T) {
 	}
 }
 
-// An app's login through FFPF ID ends at typle-r://login with a code that becomes a token for the ffpf: account.
+// An app's login through FFPF ID ends at typle-r://login with a code for the ffpf: account.
 func TestAppLoginWithFFPF(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	cookie, opened := h.ffpfSignin(t, "&client=ipad&code_challenge="+appChallenge)
 	if opened.Challenge != appChallenge || opened.Provider != "ffpf" || h.ffpf.challenge != challengeOf(opened.Verifier) {
 		t.Fatalf("OAuth cookie = %+v", opened)
@@ -241,12 +241,9 @@ func TestAppLoginWithFFPF(t *testing.T) {
 	if findCookie(response, "typle-session") != nil || len(query) != 1 {
 		t.Fatalf("the app's login set a session cookie, or %v", query)
 	}
-	traded := h.trade(`{"code":"` + query.Get("code") + `","verifier":"` + appVerifier + `"}`)
-	if traded.Code != http.StatusOK {
-		t.Fatalf("token = %d %s", traded.Code, traded.Body)
-	}
-	if user := string(decodeBody(t, traded)["user"]); user != `{"id":"ffpf:cabc","name":"FFPF User","image":null}` {
-		t.Fatalf("user = %s", user)
+	code, ok := h.keys.OpenCode(query.Get("code"), h.now)
+	if !ok || code.Sub != "ffpf:cabc" || code.Name != "FFPF User" || code.Image != "" || code.Challenge != appChallenge {
+		t.Fatalf("code = %+v, %v", code, ok)
 	}
 	// A failed login goes back to the app too.
 	h.ffpf.err = auth.ErrFFPFUnavailable
@@ -256,9 +253,9 @@ func TestAppLoginWithFFPF(t *testing.T) {
 	}
 }
 
-// Without FFPF ID only its login is unavailable: GitHub's still starts, and the session lists GitHub alone.
+// Without FFPF ID only its login is unavailable: GitHub's still starts.
 func TestFFPFUnavailable(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	h.handler = New(Config{Store: fakeStore{}, Keys: h.keys, BaseURL: mustURL(t, testBase), OAuth: h.oauth, GitHub: h.users,
 		Now: func() time.Time { return h.now }})
 	for _, path := range []string{"/api/auth/signin?provider=ffpf", "/api/auth/signin?admin=1", "/api/auth/callback/ffpf?code=c&state=s"} {
@@ -271,24 +268,11 @@ func TestFFPFUnavailable(t *testing.T) {
 	if response := h.do(http.MethodGet, "/api/auth/signin"); response.Code != http.StatusFound {
 		t.Fatalf("GitHub signin = %d", response.Code)
 	}
-	if body := strings.TrimSpace(h.do(http.MethodGet, "/api/auth/session").Body.String()); body != `{"user":null,"providers":["github"]}` {
-		t.Fatalf("session = %s", body)
-	}
-	// FFPF ID alone: the GitHub login is unavailable, and the session lists FFPF ID alone.
+	// FFPF ID alone: the GitHub login is unavailable, and FFPF ID's still starts.
 	h.handler = New(Config{Store: fakeStore{}, Keys: h.keys, BaseURL: mustURL(t, testBase), FFPF: h.ffpf,
 		Now: func() time.Time { return h.now }})
 	expectError(t, h.do(http.MethodGet, "/api/auth/signin"), http.StatusServiceUnavailable, "authUnavailable")
-	if body := strings.TrimSpace(h.do(http.MethodGet, "/api/auth/session").Body.String()); body != `{"user":null,"providers":["ffpf"]}` {
-		t.Fatalf("session = %s", body)
-	}
-}
-
-// The session lists the providers to the signed-in user too.
-func TestSessionProviders(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
-	cookie := &http.Cookie{Name: "typle-session", Value: h.keys.Seal(session.New("ffpf:cabc", "F", "", h.now))}
-	body := strings.TrimSpace(h.do(http.MethodGet, "/api/auth/session", withCookie(cookie)).Body.String())
-	if body != `{"user":{"id":"ffpf:cabc","name":"F","image":null},"providers":["github","ffpf"]}` {
-		t.Fatalf("session = %s", body)
+	if response := h.do(http.MethodGet, "/api/auth/signin?provider=ffpf"); response.Code != http.StatusFound {
+		t.Fatalf("FFPF ID signin = %d", response.Code)
 	}
 }

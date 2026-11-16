@@ -26,8 +26,6 @@ const (
 	// authPath is where the OAuth cookie lives: only the login endpoints are sent it.
 	authPath   = "/api/auth"
 	defaultTo  = "/home"
-	localSub   = "github:0"
-	localName  = "ローカル練習用"
 	randomSize = 32
 	// maxReturnTo keeps the OAuth cookie, which holds returnTo, well under the 4096 bytes a browser accepts.
 	maxReturnTo = 1024
@@ -38,18 +36,13 @@ const (
 	// Mac apps' ASWebAuthenticationSession, the Android app's intent filter and the Windows app's protocol registration
 	// wait for this scheme and give the URL to the app.
 	appReturn = "typle-r://login"
-	// maxTokenRequest is far more than a code and a verifier take.
-	maxTokenRequest = 4096
 )
 
 // appClients are the signin's clients for a login an app starts. Every app logs in the same way.
 var appClients = map[string]bool{"ipad": true, "macos": true, "android": true, "windows": true}
 
-// pkceValue is what RFC 7636 allows as a code verifier; an S256 challenge is 43 of these characters.
-var (
-	pkceValue     = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
-	pkceChallenge = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
-)
+// pkceChallenge is an S256 code challenge (RFC 7636): 43 base64url characters.
+var pkceChallenge = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
 // challengeOf is the S256 code challenge of verifier.
 func challengeOf(verifier string) string {
@@ -120,13 +113,6 @@ func methods(w http.ResponseWriter, r *http.Request, allow ...string) bool {
 	w.Header().Set("Allow", strings.Join(allow, ", "))
 	refuse(w, http.StatusMethodNotAllowed, "methodNotAllowed")
 	return false
-}
-
-// dropSession removes the session cookie of a browser. An app sends its token instead and has no cookie to remove.
-func (s *server) dropSession(w http.ResponseWriter, r *http.Request) {
-	if !fromApp(r) {
-		http.SetCookie(w, s.sessionCookie("", -1))
-	}
 }
 
 func (s *server) sessionCookie(value string, maxAge int) *http.Cookie {

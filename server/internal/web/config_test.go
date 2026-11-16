@@ -38,7 +38,7 @@ func TestFromEnvBuildsConfig(t *testing.T) {
 	if config.OAuth == nil || config.GitHub == nil {
 		t.Fatal("the login is not set up")
 	}
-	if config.Store != nil || config.LocalLogin || config.Report != nil {
+	if config.Store != nil || config.Report != nil {
 		t.Fatalf("FromEnv set more than the settings: %+v", config)
 	}
 	// The keys come from NewKeys: sealing must not panic.
@@ -151,49 +151,34 @@ func TestFromEnvFFPF(t *testing.T) {
 	}
 }
 
-// Without the GitHub OAuth App only the GitHub login is unavailable: the session, the workspace and the local login work.
+// Without the GitHub OAuth App only the GitHub login is unavailable: the FFPF ID login still starts.
 func TestWithoutGitHubOnlySigninIsUnavailable(t *testing.T) {
 	values := validEnv()
 	delete(values, "AUTH_GITHUB_ID")
 	delete(values, "AUTH_GITHUB_SECRET")
 	values["AUTH_URL"] = "http://127.0.0.1:3000"
-	values["LOCAL_DEVELOPMENT_LOGIN"] = "1"
+	values["FFPF_ID_ISSUER"] = "https://portal.example"
+	values["FFPF_ID_CLIENT_ID"] = "typle"
+	values["FFPF_ID_CLIENT_SECRET"] = "ffpf-secret"
 	log.SetOutput(io.Discard)
-	config, err := FromEnv(env(values), true)
+	config, err := FromEnv(env(values), false)
 	log.SetOutput(os.Stderr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	config.Store = fakeStore{}
 	handler := New(config)
-	do := func(method, path string, cookie *http.Cookie) *httptest.ResponseRecorder {
-		request := httptest.NewRequest(method, path, nil)
-		request.Header.Set("Origin", "http://127.0.0.1:3000")
-		if cookie != nil {
-			request.AddCookie(cookie)
-		}
+	do := func(path string) *httptest.ResponseRecorder {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		return response
 	}
 
-	expectError(t, do(http.MethodGet, "/api/auth/signin", nil), http.StatusServiceUnavailable, "authUnavailable")
-	expectError(t, do(http.MethodGet, "/api/auth/callback/github?code=c&state=s", nil), http.StatusServiceUnavailable, "authUnavailable")
-	if response := do(http.MethodGet, "/api/auth/session", nil); response.Code != http.StatusOK ||
-		strings.TrimSpace(response.Body.String()) != `{"user":null,"providers":[]}` {
-		t.Fatalf("session = %d %s", response.Code, response.Body)
-	}
-	local := do(http.MethodPost, "/api/auth/local", nil)
-	if local.Code >= 300 {
-		t.Fatalf("local login = %d %s", local.Code, local.Body)
-	}
-	cookie := findCookie(local, "typle-session")
-	if cookie == nil {
-		t.Fatalf("local login set no session: %v", local.Result().Cookies())
-	}
-	// The session reads as signed in: the login works without GitHub.
-	if response := do(http.MethodGet, "/api/auth/session", cookie); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"user":{`) {
-		t.Fatalf("session = %d %s", response.Code, response.Body)
+	expectError(t, do("/api/auth/signin"), http.StatusServiceUnavailable, "authUnavailable")
+	expectError(t, do("/api/auth/callback/github?code=c&state=s"), http.StatusServiceUnavailable, "authUnavailable")
+	if response := do("/api/auth/signin?provider=ffpf"); response.Code != http.StatusFound ||
+		!strings.HasPrefix(response.Header().Get("Location"), "https://portal.example/oauth/authorize?") {
+		t.Fatalf("FFPF ID signin = %d %v", response.Code, response.Header())
 	}
 }
 
@@ -216,7 +201,7 @@ func TestFromEnvInvalidURL(t *testing.T) {
 }
 
 // Only the origin of AUTH_URL is kept: the functions live at the domain root, so the callback is always
-// <origin>/api/auth/callback/github, and sameOrigin compares origins.
+// <origin>/api/auth/callback/github.
 func TestFromEnvKeepsOnlyTheOrigin(t *testing.T) {
 	for value, want := range map[string]string{
 		"https://typle.example":                    "https://typle.example",
@@ -246,49 +231,9 @@ func TestFromEnvKeepsOnlyTheOrigin(t *testing.T) {
 	}
 }
 
-func TestFromEnvLocalLogin(t *testing.T) {
-	cases := []struct {
-		name  string
-		local bool
-		set   map[string]string
-		want  bool
-	}{
-		{"loopback ip", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://127.0.0.1:3000"}, true},
-		{"localhost", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://localhost:3000"}, true},
-		{"ipv6 loopback", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://[::1]:3000"}, true},
-		{"uppercase localhost", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://LOCALHOST:3000"}, true},
-		{"not enabled", true, map[string]string{"AUTH_URL": "http://127.0.0.1:3000"}, false},
-		{"enabled with 0", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "0", "AUTH_URL": "http://127.0.0.1:3000"}, false},
-		{"https", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "https://127.0.0.1:3000"}, false},
-		{"public host", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://typle.example"}, false},
-		{"lan with host", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://192.168.1.2:3000", "LOCAL_DEVELOPMENT_LAN_HOST": "192.168.1.2"}, true},
-		{"lan 10/8", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://10.1.2.3:3000", "LOCAL_DEVELOPMENT_LAN_HOST": "10.1.2.3"}, true},
-		{"lan 172.16/12", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://172.31.0.9:3000", "LOCAL_DEVELOPMENT_LAN_HOST": "172.31.0.9"}, true},
-		{"lan without host", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://192.168.1.2:3000"}, false},
-		{"lan with another host", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://192.168.1.2:3000", "LOCAL_DEVELOPMENT_LAN_HOST": "192.168.1.3"}, false},
-		{"172.32 is public", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://172.32.0.9:3000", "LOCAL_DEVELOPMENT_LAN_HOST": "172.32.0.9"}, false},
-		{"public ip with host", true, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://8.8.8.8:3000", "LOCAL_DEVELOPMENT_LAN_HOST": "8.8.8.8"}, false},
-		{"not local", false, map[string]string{"LOCAL_DEVELOPMENT_LOGIN": "1", "AUTH_URL": "http://127.0.0.1:3000"}, false},
-	}
-	for _, c := range cases {
-		values := validEnv()
-		for key, value := range c.set {
-			values[key] = value
-		}
-		config, err := FromEnv(env(values), c.local)
-		if err != nil {
-			t.Errorf("%s: %v", c.name, err)
-			continue
-		}
-		if config.LocalLogin != c.want {
-			t.Errorf("%s: LocalLogin = %v, want %v", c.name, config.LocalLogin, c.want)
-		}
-	}
-}
-
 func TestUnavailable(t *testing.T) {
 	response := httptest.NewRecorder()
-	Unavailable("authUnavailable").ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/session", nil))
+	Unavailable("authUnavailable").ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/signin", nil))
 	if response.Code != http.StatusServiceUnavailable || strings.TrimSpace(response.Body.String()) != `{"error":"authUnavailable"}` {
 		t.Fatalf("response = %d %s", response.Code, response.Body)
 	}

@@ -82,7 +82,7 @@ type loginHarness struct {
 	secure  bool
 }
 
-func newLoginHarness(t *testing.T, base string, localLogin bool) *loginHarness {
+func newLoginHarness(t *testing.T, base string) *loginHarness {
 	t.Helper()
 	keys, err := session.NewKeys("test secret")
 	if err != nil {
@@ -101,7 +101,7 @@ func newLoginHarness(t *testing.T, base string, localLogin bool) *loginHarness {
 		secure: parsed.Scheme == "https",
 	}
 	h.handler = New(Config{
-		Store: fakeStore{}, Keys: keys, BaseURL: parsed, OAuth: h.oauth, GitHub: h.users, FFPF: h.ffpf, LocalLogin: localLogin,
+		Store: fakeStore{}, Keys: keys, BaseURL: parsed, OAuth: h.oauth, GitHub: h.users, FFPF: h.ffpf,
 		Now:    func() time.Time { return h.now },
 		Report: func(_ *http.Request, err error, operation string) { h.reports = append(h.reports, operation) },
 	})
@@ -120,10 +120,6 @@ func (h *loginHarness) do(method, target string, change ...func(*http.Request)) 
 
 func withCookie(c *http.Cookie) func(*http.Request) {
 	return func(r *http.Request) { r.AddCookie(c) }
-}
-
-func withOrigin(origin string) func(*http.Request) {
-	return func(r *http.Request) { r.Header.Set("Origin", origin) }
 }
 
 func findCookie(response *httptest.ResponseRecorder, name string) *http.Cookie {
@@ -179,7 +175,7 @@ func TestSafeReturnTo(t *testing.T) {
 }
 
 func TestSigninRedirects(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	response := h.do(http.MethodGet, "/api/auth/signin?returnTo="+url.QueryEscape("/lists?x=1"))
 	if response.Code != http.StatusFound {
 		t.Fatalf("status = %d", response.Code)
@@ -228,7 +224,7 @@ func TestSigninRedirects(t *testing.T) {
 }
 
 func TestSigninReturnTo(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	for target, want := range map[string]string{
 		"/api/auth/signin": "/home",
 		"/api/auth/signin?returnTo=%2F%2Fevil.example":       "/home",
@@ -247,7 +243,7 @@ func TestSigninReturnTo(t *testing.T) {
 }
 
 func TestCallbackSuccess(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	cookie := h.signin(t, "/lists?x=1")
 	opened, _ := h.keys.OpenOAuth(cookie.Value, h.now)
 	response := h.callback("code=the-code&state="+url.QueryEscape(opened.State), cookie)
@@ -282,7 +278,7 @@ func TestCallbackSuccess(t *testing.T) {
 }
 
 func TestCallbackNameFallsBackToLogin(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	h.users.user = auth.User{ID: 7, Login: " octocat ", Name: "   "}
 	cookie := h.signin(t, "/home")
 	opened, _ := h.keys.OpenOAuth(cookie.Value, h.now)
@@ -318,7 +314,7 @@ func TestCallbackRefuses(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := newLoginHarness(t, testBase, false)
+			h := newLoginHarness(t, testBase)
 			cookie := h.signin(t, "/lists")
 			opened, _ := h.keys.OpenOAuth(cookie.Value, h.now)
 			if tc.cookie != nil {
@@ -351,7 +347,7 @@ func TestCallbackGitHubFails(t *testing.T) {
 		"user":     func(h *loginHarness) { h.users.err = auth.ErrUnavailable },
 	} {
 		t.Run(name, func(t *testing.T) {
-			h := newLoginHarness(t, testBase, false)
+			h := newLoginHarness(t, testBase)
 			fail(h)
 			cookie := h.signin(t, "/lists")
 			opened, _ := h.keys.OpenOAuth(cookie.Value, h.now)
@@ -377,7 +373,7 @@ func TestCallbackGitHubFails(t *testing.T) {
 
 // The reported error must not hold what is secret: the code, the verifier, the state or a cookie.
 func TestCallbackReportsNoSecret(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	var reported error
 	h.handler = New(Config{Store: fakeStore{}, Keys: h.keys, BaseURL: mustURL(t, testBase), OAuth: h.oauth, GitHub: h.users,
 		Now:    func() time.Time { return h.now },
@@ -405,139 +401,10 @@ func mustURL(t *testing.T, value string) *url.URL {
 	return parsed
 }
 
-func TestSession(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
-	issue := func(age time.Duration, name, image string) *http.Cookie {
-		return &http.Cookie{Name: "typle-session", Value: h.keys.Seal(session.New("github:1", name, image, h.now.Add(-age)))}
-	}
-	t.Run("signed out", func(t *testing.T) {
-		response := h.do(http.MethodGet, "/api/auth/session")
-		if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"user":null,"providers":["github","ffpf"]}` {
-			t.Fatalf("response = %d %s", response.Code, response.Body)
-		}
-		expectPrivate(t, response)
-		if len(response.Result().Cookies()) != 0 {
-			t.Fatalf("cookies = %v", response.Result().Cookies())
-		}
-	})
-	t.Run("auth.js cookie only", func(t *testing.T) {
-		response := h.do(http.MethodGet, "/api/auth/session", withCookie(&http.Cookie{Name: "authjs.session-token", Value: "x"}))
-		if strings.TrimSpace(response.Body.String()) != `{"user":null,"providers":["github","ffpf"]}` {
-			t.Fatalf("body = %s", response.Body)
-		}
-	})
-	t.Run("signed in", func(t *testing.T) {
-		response := h.do(http.MethodGet, "/api/auth/session", withCookie(issue(time.Hour, "Octo", "https://avatars.test/1")))
-		want := `{"user":{"id":"github:1","name":"Octo","image":"https://avatars.test/1"},"providers":["github","ffpf"]}`
-		if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != want {
-			t.Fatalf("response = %d %s", response.Code, response.Body)
-		}
-		expectPrivate(t, response)
-		if response.Header().Get("Content-Type") != "application/json; charset=utf-8" {
-			t.Fatalf("headers = %v", response.Header())
-		}
-		if len(response.Result().Cookies()) != 0 {
-			t.Fatalf("a young session was renewed: %v", response.Result().Cookies())
-		}
-	})
-	t.Run("no image", func(t *testing.T) {
-		response := h.do(http.MethodGet, "/api/auth/session", withCookie(issue(time.Hour, "Octo", "")))
-		want := `{"user":{"id":"github:1","name":"Octo","image":null},"providers":["github","ffpf"]}`
-		if strings.TrimSpace(response.Body.String()) != want {
-			t.Fatalf("body = %s", response.Body)
-		}
-	})
-	t.Run("not renewed, however old", func(t *testing.T) {
-		response := h.do(http.MethodGet, "/api/auth/session", withCookie(issue(29*24*time.Hour, "Octo", "https://avatars.test/1")))
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":"github:1"`) {
-			t.Fatalf("response = %d %s", response.Code, response.Body)
-		}
-		expectPrivate(t, response)
-		if len(response.Result().Cookies()) != 0 {
-			t.Fatalf("an old session was renewed: %v", response.Result().Cookies())
-		}
-	})
-	t.Run("expired", func(t *testing.T) {
-		response := h.do(http.MethodGet, "/api/auth/session", withCookie(issue(31*24*time.Hour, "Octo", "")))
-		if strings.TrimSpace(response.Body.String()) != `{"user":null,"providers":["github","ffpf"]}` || len(response.Result().Cookies()) != 0 {
-			t.Fatalf("response = %s %v", response.Body, response.Result().Cookies())
-		}
-	})
-}
-
-func TestSignout(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
-	signedIn := withCookie(&http.Cookie{Name: "typle-session", Value: h.keys.Seal(session.New("github:1", "", "", h.now))})
-	for name, origin := range map[string]func(*http.Request){
-		"other origin": withOrigin("http://evil.example"),
-		"no origin":    func(*http.Request) {},
-	} {
-		t.Run(name, func(t *testing.T) {
-			response := h.do(http.MethodPost, "/api/auth/signout", signedIn, origin)
-			expectError(t, response, http.StatusForbidden, "forbiddenRequest")
-			if len(response.Result().Cookies()) != 0 {
-				t.Fatalf("cookies = %v", response.Result().Cookies())
-			}
-		})
-	}
-	response := h.do(http.MethodPost, "/api/auth/signout", signedIn, withOrigin(testBase))
-	if response.Code != http.StatusNoContent || response.Body.Len() != 0 {
-		t.Fatalf("response = %d %q", response.Code, response.Body)
-	}
-	expectPrivate(t, response)
-	cleared := findCookie(response, "typle-session")
-	if cleared == nil || cleared.Value != "" || cleared.MaxAge >= 0 || cleared.Path != "/" || !cleared.HttpOnly {
-		t.Fatalf("cookie = %+v", cleared)
-	}
-	relogin := findCookie(response, reloginCookie)
-	if relogin == nil || relogin.Value != "1" || relogin.MaxAge != 30*24*60*60 || relogin.Path != "/api/auth" ||
-		!relogin.HttpOnly || relogin.SameSite != http.SameSiteLaxMode {
-		t.Fatalf("relogin cookie = %+v", relogin)
-	}
-}
-
-func TestLocalLogin(t *testing.T) {
-	t.Run("off", func(t *testing.T) {
-		h := newLoginHarness(t, testBase, false)
-		response := h.do(http.MethodPost, "/api/auth/local", withOrigin(testBase))
-		if response.Code != http.StatusNotFound || strings.TrimSpace(response.Body.String()) != `{"error":"notFound"}` {
-			t.Fatalf("response = %d %s", response.Code, response.Body)
-		}
-		if len(response.Result().Cookies()) != 0 {
-			t.Fatalf("cookies = %v", response.Result().Cookies())
-		}
-	})
-	t.Run("on", func(t *testing.T) {
-		h := newLoginHarness(t, testBase, true)
-		response := h.do(http.MethodPost, "/api/auth/local", withOrigin(testBase))
-		if response.Code != http.StatusNoContent || response.Body.Len() != 0 {
-			t.Fatalf("response = %d %q", response.Code, response.Body)
-		}
-		set := findCookie(response, "typle-session")
-		if set == nil || !set.HttpOnly || set.SameSite != http.SameSiteLaxMode || set.Path != "/" || set.MaxAge != 30*24*60*60 {
-			t.Fatalf("cookie = %+v", set)
-		}
-		got, ok := h.keys.Open(set.Value, h.now)
-		if !ok || got.Sub != "github:0" || got.Name != "ローカル練習用" || got.Image != "" {
-			t.Fatalf("session = %+v", got)
-		}
-	})
-	t.Run("other origin", func(t *testing.T) {
-		h := newLoginHarness(t, testBase, true)
-		for _, change := range []func(*http.Request){withOrigin("http://evil.example"), func(*http.Request) {}} {
-			response := h.do(http.MethodPost, "/api/auth/local", change)
-			expectError(t, response, http.StatusForbidden, "forbiddenRequest")
-			if len(response.Result().Cookies()) != 0 {
-				t.Fatalf("cookies = %v", response.Result().Cookies())
-			}
-		}
-	})
-}
-
 func TestCookieName(t *testing.T) {
 	for base, secure := range map[string]bool{"https://typle.example": true, "http://localhost:3000": false} {
 		t.Run(base, func(t *testing.T) {
-			h := newLoginHarness(t, base, true)
+			h := newLoginHarness(t, base)
 			name := "typle-session"
 			if secure {
 				name = "__Host-typle-session"
@@ -555,42 +422,21 @@ func TestCookieName(t *testing.T) {
 			check("callback session", response, name)
 			check("callback oauth", response, session.OAuthCookie)
 			check("signin", h.do(http.MethodGet, "/api/auth/signin"), session.OAuthCookie)
-			sessionCookie := &http.Cookie{Name: name, Value: findCookie(response, name).Value}
-			// The cookie is read and cleared under the same name.
-			if got := h.do(http.MethodGet, "/api/auth/session", withCookie(sessionCookie)); !strings.Contains(got.Body.String(), `"id":"github:1"`) {
-				t.Fatalf("session = %s", got.Body)
+			// The session cookie opens under that name.
+			if got, ok := h.keys.Open(findCookie(response, name).Value, h.now); !ok || got.Sub != "github:1" {
+				t.Fatalf("session = %+v, %v", got, ok)
 			}
-			origin := withOrigin(base)
-			check("signout", h.do(http.MethodPost, "/api/auth/signout", origin), name)
-			check("local", h.do(http.MethodPost, "/api/auth/local", origin), name)
 		})
 	}
 }
 
 func TestAuthMethods(t *testing.T) {
-	h := newLoginHarness(t, testBase, true)
+	h := newLoginHarness(t, testBase)
 	// signin and callback are GET alone: a HEAD must not set a cookie, call GitHub or sign anyone in.
-	for path, allow := range map[string]string{
-		"/api/auth/signin":          "GET",
-		"/api/auth/callback/github": "GET",
-		"/api/auth/callback/ffpf":   "GET",
-		"/api/auth/session":         "GET, HEAD",
-		"/api/auth/signout":         "POST",
-		"/api/auth/local":           "POST",
-		"/api/auth/token":           "POST",
-	} {
-		methods := []string{http.MethodPut, http.MethodDelete}
-		if allow == "POST" {
-			methods = append(methods, http.MethodGet, http.MethodHead)
-		} else {
-			methods = append(methods, http.MethodPost)
-		}
-		if allow == "GET" {
-			methods = append(methods, http.MethodHead)
-		}
-		for _, method := range methods {
-			response := h.do(method, path, withOrigin(testBase))
-			if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != allow ||
+	for _, path := range []string{"/api/auth/signin", "/api/auth/callback/github", "/api/auth/callback/ffpf"} {
+		for _, method := range []string{http.MethodPut, http.MethodDelete, http.MethodPost, http.MethodHead} {
+			response := h.do(method, path)
+			if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != "GET" ||
 				strings.TrimSpace(response.Body.String()) != `{"error":"methodNotAllowed"}` {
 				t.Errorf("%s %s = %d %v %s", method, path, response.Code, response.Header(), response.Body)
 			}
@@ -598,9 +444,6 @@ func TestAuthMethods(t *testing.T) {
 				t.Errorf("%s %s set cookies: %v", method, path, response.Result().Cookies())
 			}
 		}
-	}
-	if response := h.do(http.MethodHead, "/api/auth/session"); response.Code != http.StatusOK {
-		t.Errorf("HEAD session = %d", response.Code)
 	}
 	if h.oauth.exchanges != 0 || h.users.calls != 0 || h.oauth.state != "" || h.ffpf.exchanges != 0 {
 		t.Error("a refused method reached GitHub or FFPF ID")
@@ -610,7 +453,7 @@ func TestAuthMethods(t *testing.T) {
 // Without the OAuth App or the base URL there is nothing to log in with: the request is answered with a 503 and
 // nothing is set, not a panic. It is logged, not reported, so that it does not flood the error tracker.
 func TestLoginUnavailable(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	for name, config := range map[string]Config{
 		"no OAuth":   {Store: fakeStore{}, Keys: h.keys, BaseURL: mustURL(t, testBase), GitHub: h.users},
 		"no GitHub":  {Store: fakeStore{}, Keys: h.keys, BaseURL: mustURL(t, testBase), OAuth: h.oauth},

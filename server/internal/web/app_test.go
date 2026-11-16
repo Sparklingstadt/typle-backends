@@ -1,14 +1,12 @@
 package web
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sparklingstadt/typle-r/server/internal/session"
 )
@@ -58,23 +56,8 @@ func appLocation(t *testing.T, response *httptest.ResponseRecorder) url.Values {
 	return query
 }
 
-func (h *loginHarness) trade(body string, change ...func(*http.Request)) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodPost, "/api/auth/token", strings.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
-	for _, f := range change {
-		f(r)
-	}
-	response := httptest.NewRecorder()
-	h.handler.ServeHTTP(response, r)
-	return response
-}
-
-func bearer(token string) func(*http.Request) {
-	return func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+token) }
-}
-
 func TestAppLogin(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	cookie, opened := h.appSignin(t)
 	response := h.callback("code=the-code&state="+url.QueryEscape(opened.State), cookie)
 	query := appLocation(t, response)
@@ -89,32 +72,13 @@ func TestAppLogin(t *testing.T) {
 		!code.Expires.Equal(h.now.Add(session.AppCodeMaxAge)) || len(query) != 1 {
 		t.Fatalf("code = %+v, %v (%v)", code, ok, query)
 	}
-
-	traded := h.trade(`{"code":"` + query.Get("code") + `","verifier":"` + appVerifier + `"}`)
-	if traded.Code != http.StatusOK || len(traded.Result().Cookies()) != 0 {
-		t.Fatalf("token = %d %s %v", traded.Code, traded.Body, traded.Result().Cookies())
+	// Only the app, which holds the verifier, can trade the code (src/server/auth.ts does).
+	if challengeOf(appVerifier) != code.Challenge {
+		t.Fatal("the code's challenge is not the app verifier's")
 	}
-	expectPrivate(t, traded)
-	body := decodeBody(t, traded)
-	if string(body["user"]) != `{"id":"github:1","name":"The Octocat","image":"https://avatars.test/1"}` {
-		t.Fatalf("user = %s", body["user"])
-	}
-	var token string
-	if err := jsonString(body["token"], &token); err != nil {
-		t.Fatal(err)
-	}
-	signedIn, ok := h.keys.OpenApp(token, h.now)
-	if !ok || signedIn.Sub != "github:1" || !signedIn.Expires.Equal(h.now.Add(session.MaxAge)) {
-		t.Fatalf("token = %+v, %v", signedIn, ok)
-	}
-	// The token is not a cookie, and a cookie is not a token.
-	if _, ok := h.keys.Open(token, h.now); ok {
-		t.Fatal("the token opens as a session cookie")
-	}
-
-	got := h.do(http.MethodGet, "/api/auth/session", bearer(token))
-	if strings.TrimSpace(got.Body.String()) != `{"user":{"id":"github:1","name":"The Octocat","image":"https://avatars.test/1"},"providers":["github","ffpf"]}` {
-		t.Fatalf("session = %s", got.Body)
+	// The code is not a cookie, and a cookie is not a code.
+	if _, ok := h.keys.Open(query.Get("code"), h.now); ok {
+		t.Fatal("the code opens as a session cookie")
 	}
 }
 
@@ -126,7 +90,7 @@ func TestAppLoginOtherClients(t *testing.T) {
 }
 
 func testAppLoginClient(t *testing.T, client string) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	cookie, opened := h.appSigninAs(t, client)
 	response := h.callback("code=the-code&state="+url.QueryEscape(opened.State), cookie)
 	query := appLocation(t, response)
@@ -136,17 +100,6 @@ func testAppLoginClient(t *testing.T, client string) {
 	code, ok := h.keys.OpenCode(query.Get("code"), h.now)
 	if !ok || code.Sub != "github:1" || code.Challenge != appChallenge || len(query) != 1 {
 		t.Fatalf("code = %+v, %v (%v)", code, ok, query)
-	}
-	traded := h.trade(`{"code":"` + query.Get("code") + `","verifier":"` + appVerifier + `"}`)
-	if traded.Code != http.StatusOK || len(traded.Result().Cookies()) != 0 {
-		t.Fatalf("token = %d %s %v", traded.Code, traded.Body, traded.Result().Cookies())
-	}
-	var token string
-	if err := jsonString(decodeBody(t, traded)["token"], &token); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := h.keys.OpenApp(token, h.now); !ok {
-		t.Fatal("the token does not open as an app token")
 	}
 }
 
@@ -161,7 +114,7 @@ func TestAppLoginFails(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			h := newLoginHarness(t, testBase, false)
+			h := newLoginHarness(t, testBase)
 			cookie, opened := h.appSignin(t)
 			response := h.callback(fail(h, url.QueryEscape(opened.State)), cookie)
 			if query := appLocation(t, response); query.Get("error") != "loginFailed" || len(query) != 1 {
@@ -175,7 +128,7 @@ func TestAppLoginFails(t *testing.T) {
 }
 
 func TestAppSigninRefusesBadChallenge(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
+	h := newLoginHarness(t, testBase)
 	for _, client := range []string{"ipad", "macos", "android", "windows"} {
 		for _, challenge := range []string{"", "short", appChallenge + "A", strings.Replace(appChallenge, "-", "+", 1)} {
 			response := h.do(http.MethodGet, "/api/auth/signin?client="+client+"&code_challenge="+url.QueryEscape(challenge))
@@ -193,65 +146,4 @@ func TestAppSigninRefusesBadChallenge(t *testing.T) {
 	if opened.Challenge != "" || opened.ReturnTo != "/home" {
 		t.Fatalf("OAuth cookie = %+v", opened)
 	}
-}
-
-func TestTokenRefuses(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
-	valid := session.AppCode{Sub: "github:1", Name: "A", Challenge: appChallenge, Expires: h.now.Add(session.AppCodeMaxAge)}
-	code := h.keys.SealCode(valid)
-	expired := valid
-	expired.Expires = h.now
-	for name, body := range map[string]string{
-		"wrong verifier":    `{"code":"` + code + `","verifier":"` + strings.Repeat("a", 43) + `"}`,
-		"short verifier":    `{"code":"` + code + `","verifier":"abc"}`,
-		"no verifier":       `{"code":"` + code + `"}`,
-		"expired code":      `{"code":"` + h.keys.SealCode(expired) + `","verifier":"` + appVerifier + `"}`,
-		"cookie as code":    `{"code":"` + h.keys.Seal(session.New("github:1", "", "", h.now)) + `","verifier":"` + appVerifier + `"}`,
-		"token as code":     `{"code":"` + h.keys.SealApp(session.New("github:1", "", "", h.now)) + `","verifier":"` + appVerifier + `"}`,
-		"tampered code":     `{"code":"` + code + `x","verifier":"` + appVerifier + `"}`,
-		"not JSON":          `code=` + code,
-		"empty":             ``,
-		"too large":         `{"code":"` + strings.Repeat("a", maxTokenRequest) + `"}`,
-		"verifier as array": `{"code":"` + code + `","verifier":["` + appVerifier + `"]}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			response := h.trade(body)
-			expectError(t, response, http.StatusBadRequest, "loginFailed")
-			if len(response.Result().Cookies()) != 0 {
-				t.Fatalf("cookies = %v", response.Result().Cookies())
-			}
-		})
-	}
-	if response := h.trade(`{"code":"` + code + `","verifier":"` + appVerifier + `"}`); response.Code != http.StatusOK {
-		t.Fatalf("the valid code = %d %s", response.Code, response.Body)
-	}
-}
-
-// An app token is never renewed: the answer has no new token, however old the app's own is.
-func TestAppSessionNotRenewed(t *testing.T) {
-	h := newLoginHarness(t, testBase, false)
-	token := h.keys.SealApp(session.New("github:1", "A", "", h.now))
-	h.now = h.now.Add(session.MaxAge - time.Hour)
-	response := h.do(http.MethodGet, "/api/auth/session", bearer(token))
-	if strings.Contains(response.Body.String(), "token") || len(response.Result().Cookies()) != 0 ||
-		!strings.Contains(response.Body.String(), `"id":"github:1"`) {
-		t.Fatalf("session = %s %v", response.Body, response.Result().Cookies())
-	}
-	h.now = h.now.Add(time.Hour)
-	if got := h.do(http.MethodGet, "/api/auth/session", bearer(token)); !strings.Contains(got.Body.String(), `"user":null`) {
-		t.Fatalf("a token was accepted at MaxAge: %s", got.Body)
-	}
-	// An expired, malformed or refused token is nobody, even with a valid cookie beside it.
-	cookie := withCookie(&http.Cookie{Name: "typle-session", Value: h.keys.Seal(session.New("github:2", "", "", h.now))})
-	for _, header := range []string{"Bearer " + h.keys.SealApp(session.New("github:1", "", "", h.now.Add(-session.MaxAge))),
-		"Bearer", "Bearer ", "Token " + token, "Bearer " + token + " x", "bearer " + token} {
-		response := h.do(http.MethodGet, "/api/auth/session", cookie, func(r *http.Request) { r.Header.Set("Authorization", header) })
-		if strings.TrimSpace(response.Body.String()) != `{"user":null,"providers":["github","ffpf"]}` {
-			t.Errorf("%q: session = %s", header, response.Body)
-		}
-	}
-}
-
-func jsonString(raw json.RawMessage, into *string) error {
-	return json.Unmarshal(raw, into)
 }
