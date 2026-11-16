@@ -1,4 +1,4 @@
-// Command typle-web serves the app's Go backend (/api/health, /api/workspace, /api/shares, /api/shared, /api/admin/* and /api/auth/*) locally, with the same
+// Command typle-web serves the app's Go backend (/api/workspace, /api/shares, /api/shared, /api/admin/* and /api/auth/*) locally, with the same
 // handler as the Vercel functions (server/vercel). It reads the environment only: npm run dev passes the values of .env.local and
 // .env, this command does not load them. Local login (POST /api/auth/local) is available under the same conditions as
 // the app's: see web.FromEnv.
@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 
 	// The same Backend as the Vercel functions, with the local login allowed. The login settings must be there to start;
-	// the database need not: until it opens, /api/health and /api/workspace answer 503 databaseUnavailable and try again
+	// the database need not: until it opens, /api/workspace and the gallery answer 503 databaseUnavailable and try again
 	// on later requests, while /api/auth/* works, so the UI can be developed in guest mode without a database.
 	backend := vercel.New(true)
 	defer backend.Close()
@@ -44,7 +44,7 @@ func main() {
 	go func() {
 		if !backend.Ready() {
 			log.Print("WARNING: the database is not available (set DATABASE_URL or POSTGRES_URL to a running database): " +
-				"/api/health and /api/workspace answer 503 until it opens, and are tried again on later requests; /api/auth/* works")
+				"/api/workspace and the gallery answer 503 until it opens, and are tried again on later requests; /api/auth/* works")
 		}
 	}()
 

@@ -21,8 +21,8 @@ import (
 //
 //   - /api/auth/*: needs the login settings only (web.FromEnv). Its handlers do not use the database, so the session
 //     keeps being answered, and a signed-in user stays signed in, while the database is down.
-//   - /api/health: needs the database only, so that it tells the database's state whatever the login settings are.
-//   - /api/shared: needs the database only too: a shared pack is read by anyone with the link, signed in or not.
+//   - /api/shared and the gallery's reads: need the database only: a shared pack is read by anyone with the link,
+//     signed in or not. (/api/health is answered by Next.js: src/app/api/health/route.ts.)
 //   - everything else (/api/workspace, /api/shares, /api/admin/*): needs the login settings to read the
 //     session or administrator cookie, and the database.
 //
@@ -30,8 +30,8 @@ import (
 type Backend struct {
 	local bool
 
-	// login, health, public and ready are the finished handlers of the parts.
-	login, health, public, ready atomic.Pointer[http.Handler]
+	// login, public and ready are the finished handlers of the parts.
+	login, public, ready atomic.Pointer[http.Handler]
 	// settings is the web.Config that web.FromEnv built, kept so that it is read (and its warnings logged) once.
 	settings atomic.Pointer[web.Config]
 	// source is the database, once it is open.
@@ -87,14 +87,12 @@ var (
 // Handler returns the handler of the Vercel functions: the Backend of this process.
 func Handler() http.Handler { return shared }
 
-// ServeHTTP serves /api/auth/* from the login part, /api/health, /api/shared, /api/gallery and /api/gallery/categories
+// ServeHTTP serves /api/auth/* from the login part, /api/shared, /api/gallery and /api/gallery/categories
 // from the database part and any other path from both.
 func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/api/auth/"):
 		b.authHandler().ServeHTTP(w, r)
-	case r.URL.Path == "/api/health":
-		b.healthHandler().ServeHTTP(w, r)
 	case r.URL.Path == "/api/shared", r.URL.Path == "/api/gallery", r.URL.Path == "/api/gallery/categories":
 		b.publicHandler().ServeHTTP(w, r)
 	default:
@@ -198,22 +196,7 @@ func (l lazySessions) SessionsRevokedAt(ctx context.Context, owner string) (time
 	return (*open).SessionsRevokedAt(ctx, owner)
 }
 
-// healthHandler serves /api/health from the database alone: without the login settings it still says whether the
-// database answers. While the database does not open it says databaseUnavailable.
-func (b *Backend) healthHandler() http.Handler {
-	if built := b.health.Load(); built != nil {
-		return *built
-	}
-	source := b.database()
-	if source == nil {
-		return databaseUnavailable
-	}
-	handler := web.Health(source)
-	b.health.CompareAndSwap(nil, &handler)
-	return *b.health.Load()
-}
-
-// publicHandler serves /api/shared and the gallery's reads from the database alone, as healthHandler serves /api/health.
+// publicHandler serves /api/shared and the gallery's reads from the database alone, without the login settings.
 // A failure is reported to the error tracker when SENTRY_DSN is set, which needs no login settings either.
 func (b *Backend) publicHandler() http.Handler {
 	if built := b.public.Load(); built != nil {
@@ -228,10 +211,9 @@ func (b *Backend) publicHandler() http.Handler {
 	return *b.public.Load()
 }
 
-// databaseHandler serves /api/workspace, /api/shares, /api/admin/* and any other path outside /api/auth/, /api/health,
-// /api/shared and the gallery's reads (/api/gallery/added and /api/gallery/reports are here, as they check the
-// Origin). When it cannot be built the request gets a 503, the reason is logged, and nothing is kept, so a later
-// request tries again:
+// databaseHandler serves /api/workspace, /api/shares, /api/admin/* and any other path outside /api/auth/, /api/shared
+// and the gallery's reads (/api/gallery/added and /api/gallery/reports are here, as they check the Origin). When it
+// cannot be built the request gets a 503, the reason is logged, and nothing is kept, so a later request tries again:
 //
 //   - the login settings are missing or invalid: authUnavailable. The database is not opened.
 //   - there is no database URL, or the database does not open: databaseUnavailable.

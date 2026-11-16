@@ -113,7 +113,6 @@ type server struct {
 func New(c Config) http.Handler {
 	s := &server{config: c}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/health", s.health)
 	mux.HandleFunc("/api/workspace", s.measured(s.workspace))
 	mux.HandleFunc("/api/workspace/records", s.measured(s.records))
 	mux.HandleFunc("/api/shares", s.shares)

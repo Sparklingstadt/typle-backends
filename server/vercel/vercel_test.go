@@ -96,9 +96,12 @@ func get(path string) *httptest.ResponseRecorder {
 	return response
 }
 
+// probe is a path of the database part that needs no login settings, as /api/health did before Next.js answered it.
+const probe = "/api/gallery/categories"
+
 func serve(t *testing.T) *httptest.ResponseRecorder {
 	t.Helper()
-	return get("/api/health")
+	return get(probe)
 }
 
 func expect(t *testing.T, response *httptest.ResponseRecorder, status int, body string) {
@@ -109,7 +112,7 @@ func expect(t *testing.T, response *httptest.ResponseRecorder, status int, body 
 }
 
 // Without the login settings the auth paths and the workspace say authUnavailable, without opening the database, and
-// nothing panics (a zero web.Config would panic on the first session). The health check needs no login settings: it
+// nothing panics (a zero web.Config would panic on the first session). The public reads need no login settings: it
 // says what the database says. Nothing of the failure is kept: once the settings are there, the next request is served.
 func TestHandlerWithoutSecret(t *testing.T) {
 	reset(t)
@@ -125,27 +128,27 @@ func TestHandlerWithoutSecret(t *testing.T) {
 	if opened.Load() != 0 {
 		t.Fatal("the database was opened for a path that cannot be served without the login settings")
 	}
-	expect(t, get("/api/health"), http.StatusOK, `{"status":"ok"}`)
+	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
 	if opened.Load() != 1 {
-		t.Fatalf("the database was opened %d times for the health check", opened.Load())
+		t.Fatalf("the database was opened %d times for the public reads", opened.Load())
 	}
 
 	t.Setenv("AUTH_SECRET", "secret")
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 	expect(t, get("/api/workspace"), http.StatusUnauthorized, `{"error":"loginRequired"}`)
-	expect(t, get("/api/health"), http.StatusOK, `{"status":"ok"}`)
+	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
 	if opened.Load() != 1 {
 		t.Fatalf("the database was opened %d times", opened.Load())
 	}
 }
 
-// Without the login settings, the health check still tells a database that is down.
-func TestHealthWithoutSecretDatabaseDown(t *testing.T) {
+// Without the login settings, the public reads still tell a database that is down.
+func TestPublicWithoutSecretDatabaseDown(t *testing.T) {
 	reset(t)
 	settings(t)
 	t.Setenv("AUTH_URL", "")
 	backend.open = func(context.Context, string) (web.Store, error) { return nil, errors.New("connection refused") }
-	expect(t, get("/api/health"), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
+	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	expect(t, get("/api/workspace"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 }
 
@@ -157,19 +160,19 @@ func TestHandlerInvalidAuthURL(t *testing.T) {
 	expect(t, get("/api/auth/session"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 }
 
-// While the database does not open, /api/health and /api/workspace say databaseUnavailable, and the auth paths are
+// While the database does not open, the probe and /api/workspace say databaseUnavailable, and the auth paths are
 // answered all the same: they need no database, and a signed-in user stays signed in.
 func TestHandlerDatabaseDown(t *testing.T) {
 	reset(t)
 	settings(t)
 	backend.retryAfter = 0
 	backend.open = func(context.Context, string) (web.Store, error) { return nil, errors.New("connection refused") }
-	for _, path := range []string{"/api/health", "/api/workspace"} {
+	for _, path := range []string{probe, "/api/workspace"} {
 		expect(t, get(path), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	}
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	expect(t, get("/api/health"), http.StatusOK, `{"status":"ok"}`)
+	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
 }
 
 // The auth paths never open the database: not when they are the first request, and not while it is down.
@@ -268,7 +271,7 @@ func TestHandlerSessionWithUnreachableDatabase(t *testing.T) {
 	response = httptest.NewRecorder()
 	backend.ServeHTTP(response, request)
 	expect(t, response, http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
-	expect(t, get("/api/health"), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
+	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 }
 
 // Without the GitHub OAuth App the functions are served: only signin says authUnavailable.
@@ -280,7 +283,7 @@ func TestHandlerWithoutGitHub(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":[]}`)
 	expect(t, get("/api/auth/signin"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
-	expect(t, get("/api/health"), http.StatusOK, `{"status":"ok"}`)
+	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
 }
 
 // Once built, the auth handler is found without the lock, and without reading the environment again.
@@ -309,9 +312,9 @@ func TestHandlerWithoutDatabaseURL(t *testing.T) {
 	settings(t)
 	t.Setenv("DATABASE_URL", "")
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	expect(t, get("/api/health"), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
+	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	t.Setenv("POSTGRES_URL", "postgresql://typle@db.invalid/typle")
-	expect(t, get("/api/health"), http.StatusOK, `{"status":"ok"}`)
+	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
 }
 
 // Many requests that arrive while the database is down share one connection attempt instead of queueing behind one
@@ -379,22 +382,22 @@ func TestHandlerBackOff(t *testing.T) {
 		return nil, errors.New("connection refused")
 	}
 	for i := 0; i < 5; i++ {
-		expect(t, get("/api/health"), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
+		expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 		moment = moment.Add(100 * time.Millisecond)
 	}
 	if attempts.Load() != 1 {
 		t.Fatalf("%d attempts within the back-off", attempts.Load())
 	}
 	moment = moment.Add(time.Second)
-	get("/api/health")
+	get(probe)
 	if attempts.Load() != 2 {
 		t.Fatalf("%d attempts after the back-off", attempts.Load())
 	}
 	// The back-off does not hide a recovered database for longer than it lasts.
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	expect(t, get("/api/health"), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
+	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	moment = moment.Add(time.Second)
-	expect(t, get("/api/health"), http.StatusOK, `{"status":"ok"}`)
+	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
 }
 
 // Once built, the handler is kept and found without the lock or another connection.
@@ -403,7 +406,7 @@ func TestHandlerBuiltIsKept(t *testing.T) {
 	settings(t)
 	var attempts atomic.Int32
 	backend.open = func(context.Context, string) (web.Store, error) { attempts.Add(1); return fakeStore{}, nil }
-	expect(t, serve(t), http.StatusOK, `{"status":"ok"}`)
+	expect(t, serve(t), http.StatusOK, `{"categories":[]}`)
 	first := backend.databaseHandler()
 
 	backend.mu.Lock()
@@ -433,7 +436,7 @@ func TestHandlerRealDatabase(t *testing.T) {
 	settings(t)
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("POSTGRES_URL", connection)
-	expect(t, serve(t), http.StatusOK, `{"status":"ok"}`)
+	expect(t, serve(t), http.StatusOK, `{"categories":[]}`)
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 }
 

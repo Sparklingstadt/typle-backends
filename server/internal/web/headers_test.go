@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +31,7 @@ func TestSecurityHeaders(t *testing.T) {
 		name, method, target string
 		status               int
 	}{
-		{"health", http.MethodGet, "/api/health", http.StatusOK},
+		{"gallery categories", http.MethodGet, "/api/gallery/categories", http.StatusOK},
 		{"workspace without login", http.MethodGet, "/api/workspace", http.StatusUnauthorized},
 		{"session", http.MethodGet, "/api/auth/session", http.StatusOK},
 		{"redirect", http.MethodGet, "/api/auth/signin?returnTo=" + url.QueryEscape("/lists"), http.StatusFound},
@@ -60,13 +59,11 @@ func TestUnavailableSecurityHeaders(t *testing.T) {
 func TestJSONHeadersUniform(t *testing.T) {
 	h := newLoginHarness(t, testBase, true)
 	responses := map[string]*httptest.ResponseRecorder{
-		"health":             h.do(http.MethodGet, "/api/health"),
 		"not found":          h.do(http.MethodGet, "/nowhere"),
 		"method not allowed": h.do(http.MethodDelete, "/api/workspace"),
 		"login method":       h.do(http.MethodPut, "/api/auth/session"),
 		"token refused":      h.do(http.MethodPost, "/api/auth/token"),
 		"unavailable":        get(t, Unavailable("databaseUnavailable"), http.MethodGet, "/api/workspace"),
-		"health down":        get(t, New(Config{Store: fakeStore{err: errors.New("down")}}), http.MethodGet, "/api/health"),
 		"login missing":      get(t, New(Config{Store: fakeStore{}}), http.MethodGet, "/api/auth/signin"),
 		"local login off":    get(t, New(Config{Store: fakeStore{}}), http.MethodPost, "/api/auth/local"),
 	}
