@@ -32,6 +32,25 @@ func saved(t *testing.T, s *Store, owner string) *workspace.Workspace {
 	return w
 }
 
+// storedPack is the snapshot of the share id, written as EncodePackFile writes it (jsonb keeps neither the spacing nor
+// the order of keys). Next.js serves it as /api/shared (src/server/shared.ts).
+func storedPack(t *testing.T, conn *pgx.Conn, id string) []byte {
+	t.Helper()
+	var data []byte
+	if err := conn.QueryRow(context.Background(), `SELECT data::text FROM typle_shared_packs WHERE id = $1`, id).Scan(&data); err != nil {
+		t.Fatal(err)
+	}
+	file, err := workspace.DecodePackFile(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := file.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
 func isKey(err error, key string) bool {
 	var e *workspace.Error
 	return errors.As(err, &e) && e.Key == key
@@ -69,9 +88,8 @@ func TestPutShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := s.SharedPack(ctx, share.ID)
-	if err != nil || !bytes.Equal(data, want) {
-		t.Fatalf("SharedPack = %s, %v; want %s", data, err, want)
+	if data := storedPack(t, conn, share.ID); !bytes.Equal(data, want) {
+		t.Fatalf("stored pack = %s; want %s", data, want)
 	}
 
 	// Sharing again keeps the link and copies the pack as it is now.
@@ -90,9 +108,8 @@ func TestPutShare(t *testing.T) {
 	if again.ID != share.ID || !again.UpdatedAt.After(share.UpdatedAt) {
 		t.Fatalf("again = %+v, first = %+v", again, share)
 	}
-	data, err = s.SharedPack(ctx, share.ID)
-	if err != nil || !strings.Contains(string(data), `"name": "改名したパック"`) {
-		t.Fatalf("SharedPack = %s, %v", data, err)
+	if data := storedPack(t, conn, share.ID); !strings.Contains(string(data), `"name": "改名したパック"`) {
+		t.Fatalf("stored pack = %s", data)
 	}
 
 	if _, err := s.PutShare(ctx, id, "no-such-pack", nil); !isKey(err, "packNotFound") {
@@ -148,16 +165,6 @@ func TestModifyWithoutRowDeletesShares(t *testing.T) {
 	}
 	if got := shareCount(t, s, id); !slices.Equal(got, []string{second}) {
 		t.Fatalf("shares = %v", got)
-	}
-}
-
-func TestSharedPackMissing(t *testing.T) {
-	connection, _ := database(t)
-	s := open(t, connection)
-	for _, id := range []string{"00000000-0000-4000-8000-000000000000", "not-a-uuid", ""} {
-		if data, err := s.SharedPack(context.Background(), id); data != nil || err != nil {
-			t.Errorf("SharedPack(%q) = %s, %v; want nil, nil", id, data, err)
-		}
 	}
 }
 
@@ -491,26 +498,6 @@ func TestPutShareHidden(t *testing.T) {
 	}
 	if got := listedOf(t, s, id); !got.Hidden || !got.Listed {
 		t.Fatalf("ListShares = %+v", got)
-	}
-}
-
-func TestSharedPackHidden(t *testing.T) {
-	ctx := context.Background()
-	connection, conn := database(t)
-	id := owner(t, conn)
-	s := open(t, connection)
-	share, err := s.PutShare(ctx, id, saved(t, s, id).Packs[0].ID, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if data, err := s.SharedPack(ctx, share.ID); err != nil || data == nil {
-		t.Fatalf("before: %s, %v", data, err)
-	}
-	if _, err := conn.Exec(ctx, `UPDATE typle_shared_packs SET hidden_at = now() WHERE id = $1`, share.ID); err != nil {
-		t.Fatal(err)
-	}
-	if data, err := s.SharedPack(ctx, share.ID); data != nil || err != nil {
-		t.Fatalf("hidden: %s, %v; want nil, nil", data, err)
 	}
 }
 

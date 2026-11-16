@@ -2,7 +2,6 @@ package vercel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -48,13 +47,7 @@ func (fakeStore) ListShares(context.Context, string) ([]store.Share, error) {
 	return nil, errors.New("not used")
 }
 
-// SharedPack has no links: every id is not found.
-func (fakeStore) SharedPack(context.Context, string) (json.RawMessage, error) { return nil, nil }
-func (fakeStore) Gallery(context.Context, store.GalleryQuery) (*store.GalleryPage, error) {
-	return &store.GalleryPage{}, nil
-}
-func (fakeStore) GalleryCategories(context.Context) ([]store.GalleryCategory, error) { return nil, nil }
-func (fakeStore) CountAdded(context.Context, string) error                           { return nil }
+func (fakeStore) CountAdded(context.Context, string) error { return nil }
 func (fakeStore) CountGalleryHit(context.Context, string, []byte) (int, time.Time, error) {
 	return 1, time.Now().Add(time.Minute), nil
 }
@@ -96,8 +89,9 @@ func get(path string) *httptest.ResponseRecorder {
 	return response
 }
 
-// probe is a path of the database part that needs no login settings, as /api/health did before Next.js answered it.
-const probe = "/api/gallery/categories"
+// probe is a path of the database part: with the login settings and the database open, an anonymous request is refused
+// with loginRequired. (/api/health, /api/shared and the gallery's reads, which needed no login settings, are Next.js's.)
+const probe = "/api/workspace"
 
 func serve(t *testing.T) *httptest.ResponseRecorder {
 	t.Helper()
@@ -112,8 +106,8 @@ func expect(t *testing.T, response *httptest.ResponseRecorder, status int, body 
 }
 
 // Without the login settings the auth paths and the workspace say authUnavailable, without opening the database, and
-// nothing panics (a zero web.Config would panic on the first session). The public reads need no login settings: it
-// says what the database says. Nothing of the failure is kept: once the settings are there, the next request is served.
+// nothing panics (a zero web.Config would panic on the first session). Nothing of the failure is kept: once the
+// settings are there, the next request is served.
 func TestHandlerWithoutSecret(t *testing.T) {
 	reset(t)
 	settings(t)
@@ -128,28 +122,13 @@ func TestHandlerWithoutSecret(t *testing.T) {
 	if opened.Load() != 0 {
 		t.Fatal("the database was opened for a path that cannot be served without the login settings")
 	}
-	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
-	if opened.Load() != 1 {
-		t.Fatalf("the database was opened %d times for the public reads", opened.Load())
-	}
 
 	t.Setenv("AUTH_SECRET", "secret")
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 	expect(t, get("/api/workspace"), http.StatusUnauthorized, `{"error":"loginRequired"}`)
-	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
 	if opened.Load() != 1 {
 		t.Fatalf("the database was opened %d times", opened.Load())
 	}
-}
-
-// Without the login settings, the public reads still tell a database that is down.
-func TestPublicWithoutSecretDatabaseDown(t *testing.T) {
-	reset(t)
-	settings(t)
-	t.Setenv("AUTH_URL", "")
-	backend.open = func(context.Context, string) (web.Store, error) { return nil, errors.New("connection refused") }
-	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
-	expect(t, get("/api/workspace"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 }
 
 func TestHandlerInvalidAuthURL(t *testing.T) {
@@ -172,7 +151,7 @@ func TestHandlerDatabaseDown(t *testing.T) {
 	}
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
 }
 
 // The auth paths never open the database: not when they are the first request, and not while it is down.
@@ -283,7 +262,7 @@ func TestHandlerWithoutGitHub(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":[]}`)
 	expect(t, get("/api/auth/signin"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
-	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
 }
 
 // Once built, the auth handler is found without the lock, and without reading the environment again.
@@ -314,7 +293,7 @@ func TestHandlerWithoutDatabaseURL(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	t.Setenv("POSTGRES_URL", "postgresql://typle@db.invalid/typle")
-	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
 }
 
 // Many requests that arrive while the database is down share one connection attempt instead of queueing behind one
@@ -397,7 +376,7 @@ func TestHandlerBackOff(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	moment = moment.Add(time.Second)
-	expect(t, get(probe), http.StatusOK, `{"categories":[]}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
 }
 
 // Once built, the handler is kept and found without the lock or another connection.
@@ -406,7 +385,7 @@ func TestHandlerBuiltIsKept(t *testing.T) {
 	settings(t)
 	var attempts atomic.Int32
 	backend.open = func(context.Context, string) (web.Store, error) { attempts.Add(1); return fakeStore{}, nil }
-	expect(t, serve(t), http.StatusOK, `{"categories":[]}`)
+	expect(t, serve(t), http.StatusUnauthorized, `{"error":"loginRequired"}`)
 	first := backend.databaseHandler()
 
 	backend.mu.Lock()
@@ -436,7 +415,7 @@ func TestHandlerRealDatabase(t *testing.T) {
 	settings(t)
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("POSTGRES_URL", connection)
-	expect(t, serve(t), http.StatusOK, `{"categories":[]}`)
+	expect(t, serve(t), http.StatusUnauthorized, `{"error":"loginRequired"}`)
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 }
 
@@ -447,9 +426,8 @@ func TestHandlerUnreachableDatabase(t *testing.T) {
 	expect(t, serve(t), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 }
 
-// /api/shared is for anyone with a link, so it needs the database only: it answers without the login settings. /api/shares
-// is the owner's, and answers as /api/workspace does without them.
-func TestSharedWithoutSecret(t *testing.T) {
+// /api/shares is the owner's, and answers as /api/workspace does without the login settings.
+func TestSharesWithoutSecret(t *testing.T) {
 	reset(t)
 	settings(t)
 	t.Setenv("AUTH_SECRET", "")
@@ -460,61 +438,32 @@ func TestSharedWithoutSecret(t *testing.T) {
 	if opened.Load() != 0 {
 		t.Fatal("the database was opened for /api/shares without the login settings")
 	}
-	expect(t, get("/api/shared?id=0b6f2c1e-3d4a-4f5b-8c9d-0e1f2a3b4c5d"), http.StatusNotFound, `{"error":"sharedPackNotFound"}`)
-	if opened.Load() != 1 {
-		t.Fatalf("the database was opened %d times for /api/shared", opened.Load())
-	}
 
 	t.Setenv("AUTH_SECRET", "secret")
 	t.Setenv("AUTH_URL", "https://typle.example")
 	expect(t, get("/api/shares"), http.StatusUnauthorized, `{"error":"loginRequired"}`)
-	expect(t, get("/api/shared?id=nope"), http.StatusNotFound, `{"error":"sharedPackNotFound"}`)
 }
 
-// While the database does not open, both say databaseUnavailable.
-func TestSharedDatabaseDown(t *testing.T) {
+// While the database does not open, /api/shares says databaseUnavailable.
+func TestSharesDatabaseDown(t *testing.T) {
 	reset(t)
 	settings(t)
 	backend.retryAfter = 0
 	backend.open = func(context.Context, string) (web.Store, error) { return nil, errors.New("connection refused") }
-	for _, path := range []string{"/api/shared?id=x", "/api/shares"} {
+	for _, path := range []string{"/api/shares"} {
 		expect(t, get(path), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	}
 }
 
-// The gallery is read by anyone, so like /api/shared it needs the database only; whatever the answer, it is not indexed
-// or kept. /api/gallery/added checks the Origin against AUTH_URL, so it needs the login settings.
-func TestGalleryWithoutSecret(t *testing.T) {
+// /api/gallery/added checks the Origin against AUTH_URL, so it needs the login settings. (The gallery's reads are
+// Next.js's.)
+func TestGalleryAddedWithoutSecret(t *testing.T) {
 	reset(t)
 	settings(t)
 	t.Setenv("AUTH_SECRET", "")
 	t.Setenv("AUTH_URL", "")
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	for path, body := range map[string]string{"/api/gallery": `{"packs":[],"more":false}`, "/api/gallery/categories": `{"categories":[]}`} {
-		response := get(path)
-		expect(t, response, http.StatusOK, body)
-		checkGalleryHeaders(t, response)
-	}
 	post := httptest.NewRecorder()
 	backend.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/api/gallery/added?id=x", nil))
 	expect(t, post, http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
-}
-
-func TestGalleryDatabaseDown(t *testing.T) {
-	reset(t)
-	settings(t)
-	backend.retryAfter = 0
-	backend.open = func(context.Context, string) (web.Store, error) { return nil, errors.New("connection refused") }
-	for _, path := range []string{"/api/gallery", "/api/gallery/categories"} {
-		response := get(path)
-		expect(t, response, http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
-		checkGalleryHeaders(t, response)
-	}
-}
-
-func checkGalleryHeaders(t *testing.T, response *httptest.ResponseRecorder) {
-	t.Helper()
-	if response.Header().Get("X-Robots-Tag") != "noindex" || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("headers = %v", response.Header())
-	}
 }

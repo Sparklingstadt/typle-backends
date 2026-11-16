@@ -31,7 +31,6 @@ func TestSecurityHeaders(t *testing.T) {
 		name, method, target string
 		status               int
 	}{
-		{"gallery categories", http.MethodGet, "/api/gallery/categories", http.StatusOK},
 		{"workspace without login", http.MethodGet, "/api/workspace", http.StatusUnauthorized},
 		{"session", http.MethodGet, "/api/auth/session", http.StatusOK},
 		{"redirect", http.MethodGet, "/api/auth/signin?returnTo=" + url.QueryEscape("/lists"), http.StatusFound},

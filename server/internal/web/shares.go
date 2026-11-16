@@ -30,19 +30,6 @@ func shareOf(share store.Share) shareJSON {
 	return shareJSON{share.ID, share.PackID, share.Name, workspace.FormatTime(share.UpdatedAt), share.Listed, share.Hidden}
 }
 
-// Public serves /api/shared and the gallery's reads (/api/gallery, /api/gallery/categories) from the database alone, for
-// a backend that has no login settings to build New with: they are read by anyone, signed in or not. Their answers are
-// the same as New's. POST /api/gallery/added checks the Origin against the app's address, so it is New's alone.
-func Public(s Store, report func(r *http.Request, err error, operation string)) http.Handler {
-	srv := &server{config: Config{Store: s, Report: report}}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/shared", srv.shared)
-	mux.HandleFunc("/api/gallery", srv.gallery)
-	mux.HandleFunc("/api/gallery/categories", srv.galleryCategories)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { refuse(w, http.StatusNotFound, "notFound") })
-	return withSecurityHeaders(mux)
-}
-
 // HEAD is served as GET; net/http leaves the body out.
 func (s *server) shares(w http.ResponseWriter, r *http.Request) {
 	if !methods(w, r, http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete) {
@@ -184,37 +171,4 @@ func readShareBody(r *http.Request) (packID string, listed *bool, ok bool) {
 		listed = &value
 	}
 	return packID, listed, true
-}
-
-// shared answers the pack a link shares, as the file it was copied into: anyone with the link may read it, so it is
-// the same for every reader and needs no cookie, but it is not kept, so that a link that is stopped is gone at once.
-// HEAD is served as GET; net/http leaves the body out.
-func (s *server) shared(w http.ResponseWriter, r *http.Request) {
-	// A shared pack is for people with the link, not for search engines; every answer says so, errors included.
-	w.Header().Set("X-Robots-Tag", "noindex")
-	if !methods(w, r, http.MethodGet, http.MethodHead) {
-		return
-	}
-	data, f := s.sharedFile(r, r.URL.Query().Get("id"))
-	if f == nil && data == nil {
-		f = refused(http.StatusNotFound, "sharedPackNotFound")
-	}
-	if f != nil {
-		s.fail(w, r, f)
-		return
-	}
-	header := w.Header()
-	header.Set("Content-Type", "application/json; charset=utf-8")
-	header.Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
-}
-
-// sharedFile reads the file of the pack the link id shares, or nil when there is no such link.
-func (s *server) sharedFile(r *http.Request, id string) (json.RawMessage, *failure) {
-	data, err := s.config.Store.SharedPack(r.Context(), id)
-	if err != nil {
-		return nil, broken(err, "shared.read", "databaseUnavailable")
-	}
-	return data, nil
 }

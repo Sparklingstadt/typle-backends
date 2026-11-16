@@ -24,9 +24,6 @@ type Store interface {
 	PutShare(ctx context.Context, owner, packID string, listed *bool) (*store.Share, error)
 	DeleteShare(ctx context.Context, owner, packID string) error
 	ListShares(ctx context.Context, owner string) ([]store.Share, error)
-	SharedPack(ctx context.Context, id string) (json.RawMessage, error)
-	Gallery(ctx context.Context, q store.GalleryQuery) (*store.GalleryPage, error)
-	GalleryCategories(ctx context.Context) ([]store.GalleryCategory, error)
 	CountAdded(ctx context.Context, id string) error
 	CountGalleryHit(ctx context.Context, action string, client []byte) (hits int, windowEnd time.Time, err error)
 	Report(ctx context.Context, id, reason string) (bool, error)
@@ -116,9 +113,6 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("/api/workspace", s.measured(s.workspace))
 	mux.HandleFunc("/api/workspace/records", s.measured(s.records))
 	mux.HandleFunc("/api/shares", s.shares)
-	mux.HandleFunc("/api/shared", s.shared)
-	mux.HandleFunc("/api/gallery", s.gallery)
-	mux.HandleFunc("/api/gallery/categories", s.galleryCategories)
 	mux.HandleFunc("/api/gallery/added", s.galleryAdded)
 	mux.HandleFunc("/api/gallery/reports", s.galleryReport)
 	mux.HandleFunc("/api/auth/signin", s.signin)

@@ -2,9 +2,7 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -127,28 +125,6 @@ func (s *Store) ListShares(ctx context.Context, owner string) ([]Share, error) {
 		err := row.Scan(&share.ID, &share.PackID, &share.Name, &share.Listed, &share.Hidden, &share.UpdatedAt)
 		return share, err
 	})
-}
-
-// SharedPack returns the pack file a link shares, written as EncodePackFile wrote it (jsonb keeps neither its spacing
-// nor its key order). It is for anyone with the link, so it has nothing of the owner. A link that is not there or is
-// hidden, or an id that is not a UUID, is (nil, nil).
-func (s *Store) SharedPack(ctx context.Context, id string) (json.RawMessage, error) {
-	if !isUUID(id) {
-		return nil, nil
-	}
-	var data []byte
-	err := s.pool.QueryRow(ctx, `SELECT data::text FROM typle_shared_packs WHERE id = $1 AND hidden_at IS NULL`, id).Scan(&data)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	file, err := workspace.DecodePackFile(data)
-	if err != nil {
-		return nil, fmt.Errorf("shared pack %s: %w", id, err)
-	}
-	return file.Encode()
 }
 
 // isUUID tells whether id is a UUID as the links are written: 8-4-4-4-12 hexadecimal digits.

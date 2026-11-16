@@ -5,37 +5,13 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/sparklingstadt/typle-r/server/internal/store"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
 
-// The gallery is the shares their owners list and the operator has not hidden. Anyone may read it, signed in or not,
-// and an answer never names the owner. Like /api/shared it is not for search engines, and nothing keeps it.
-
-// maxGalleryPage keeps the OFFSET of a made-up page number from making the database walk far, as maxUsersPage does.
-const maxGalleryPage = 10000
-
-// galleryPackJSON is one listed pack as /api/gallery answers it. description, category and tags are left out when the
-// pack has none. updatedAt is written as shareJSON writes it.
-type galleryPackJSON struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	Category    string   `json:"category,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	Lists       int      `json:"lists"`
-	Words       int      `json:"words"`
-	Added       int      `json:"added"`
-	UpdatedAt   string   `json:"updatedAt"`
-}
-
-type galleryAnswer struct {
-	Packs []galleryPackJSON `json:"packs"`
-	More  bool              `json:"more"`
-}
+// The gallery is the shares their owners list and the operator has not hidden. Its reads (/api/gallery and
+// /api/gallery/categories) are answered by Next.js (src/server/gallery.ts); its writes, here, are not for search
+// engines either, and nothing keeps them.
 
 // noStore makes the answer carry Cache-Control: no-store, over the private, no-store that reply writes.
 type noStore struct{ http.ResponseWriter }
@@ -51,14 +27,6 @@ func galleryHeaders(w http.ResponseWriter) http.ResponseWriter {
 	return noStore{w}
 }
 
-// NoIndex answers as next does, with the headers of galleryHeaders, for an answer made outside this package that must
-// look like the gallery's and /api/shared's (server/vercel's 503 when the database cannot be reached).
-func NoIndex(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(galleryHeaders(w), r)
-	})
-}
-
 // queryPage reads the query's page, which is fallback when it is left out. ok is false when it is not a number.
 func queryPage(r *http.Request, fallback int) (page int, ok bool) {
 	value := r.URL.Query().Get("page")
@@ -67,109 +35,6 @@ func queryPage(r *http.Request, fallback int) (page int, ok bool) {
 	}
 	page, err := strconv.Atoi(value)
 	return page, err == nil
-}
-
-// galleryQuery reads ?q=&category=&sort=&page=. q is trimmed and cut to store.MaxGalleryQuery runes; sort is "new" (the
-// default) or "popular"; page is a number from 1 to maxGalleryPage (the default is 1). q and category must be valid
-// UTF-8 without NUL, which the database would refuse.
-func galleryQuery(r *http.Request) (store.GalleryQuery, bool) {
-	values := r.URL.Query()
-	page, ok := queryPage(r, 1)
-	if !ok {
-		return store.GalleryQuery{}, false
-	}
-	return checkGalleryQuery(values.Get("q"), values.Get("category"), store.GallerySort(values.Get("sort")), page)
-}
-
-// checkGalleryQuery is a search of the gallery as galleryQuery reads it: sort "" is the default, and page must be from 1
-// to maxGalleryPage.
-func checkGalleryQuery(text, category string, sort store.GallerySort, page int) (store.GalleryQuery, bool) {
-	for _, value := range []string{text, category} {
-		if !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
-			return store.GalleryQuery{}, false
-		}
-	}
-	q := store.GalleryQuery{Text: strings.TrimSpace(text), Category: category, Sort: store.GalleryNew, Page: page}
-	if runes := []rune(q.Text); len(runes) > store.MaxGalleryQuery {
-		q.Text = string(runes[:store.MaxGalleryQuery])
-	}
-	switch sort {
-	case "":
-	case store.GalleryNew, store.GalleryPopular:
-		q.Sort = sort
-	default:
-		return q, false
-	}
-	if page < 1 || page > maxGalleryPage {
-		return q, false
-	}
-	return q, true
-}
-
-// gallery answers one page of the listed packs. HEAD is served as GET; net/http leaves the body out.
-func (s *server) gallery(w http.ResponseWriter, r *http.Request) {
-	w = galleryHeaders(w)
-	if !methods(w, r, http.MethodGet, http.MethodHead) {
-		return
-	}
-	query, ok := galleryQuery(r)
-	if !ok {
-		refuse(w, http.StatusBadRequest, "invalidQuery")
-		return
-	}
-	page, f := s.galleryPage(r, query)
-	if f != nil {
-		s.fail(w, r, f)
-		return
-	}
-	answer := galleryAnswer{Packs: make([]galleryPackJSON, 0, len(page.Packs)), More: page.More}
-	for _, pack := range page.Packs {
-		answer.Packs = append(answer.Packs, galleryPackJSON{
-			ID: pack.ID, Name: pack.Name, Description: pack.Description, Category: pack.Category, Tags: pack.Tags,
-			Lists: pack.Lists, Words: pack.Words, Added: pack.Added,
-			UpdatedAt: workspace.FormatTime(pack.UpdatedAt),
-		})
-	}
-	reply(w, http.StatusOK, answer)
-}
-
-// galleryPage reads one page of the listed packs.
-func (s *server) galleryPage(r *http.Request, query store.GalleryQuery) (*store.GalleryPage, *failure) {
-	page, err := s.config.Store.Gallery(r.Context(), query)
-	if err != nil {
-		return nil, broken(err, "gallery.read", "databaseUnavailable")
-	}
-	// An empty page answers [], never null.
-	if page.Packs == nil {
-		page.Packs = []store.GalleryPack{}
-	}
-	return page, nil
-}
-
-// galleryCategories answers the categories of the listed packs, the most packs first.
-func (s *server) galleryCategories(w http.ResponseWriter, r *http.Request) {
-	w = galleryHeaders(w)
-	if !methods(w, r, http.MethodGet, http.MethodHead) {
-		return
-	}
-	categories, f := s.categories(r)
-	if f != nil {
-		s.fail(w, r, f)
-		return
-	}
-	reply(w, http.StatusOK, map[string][]store.GalleryCategory{"categories": categories})
-}
-
-// categories reads the categories of the listed packs, never nil.
-func (s *server) categories(r *http.Request) ([]store.GalleryCategory, *failure) {
-	categories, err := s.config.Store.GalleryCategories(r.Context())
-	if err != nil {
-		return nil, broken(err, "gallery.categories", "databaseUnavailable")
-	}
-	if categories == nil {
-		categories = []store.GalleryCategory{}
-	}
-	return categories, nil
 }
 
 // galleryAdded counts one more "added to my packs" for the pack ?id=. Its Origin is checked as DELETE /api/shares's is.
