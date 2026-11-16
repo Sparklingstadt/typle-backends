@@ -17,12 +17,6 @@ type fakeStore struct{ err error }
 
 func (f fakeStore) Ping(context.Context) error { return f.err }
 
-func (f fakeStore) ReadRevision(context.Context, string) (*store.Saved, error) { return nil, f.err }
-
-func (f fakeStore) WriteRevision(context.Context, string, int, store.Change) (*store.Saved, error) {
-	return nil, f.err
-}
-
 func (f fakeStore) Modify(context.Context, string, func(*workspace.Workspace) (bool, error)) (*workspace.Workspace, error) {
 	return nil, f.err
 }

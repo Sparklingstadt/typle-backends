@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sparklingstadt/typle-r/server/internal/auth"
-	"github.com/sparklingstadt/typle-r/server/internal/operation"
 	"github.com/sparklingstadt/typle-r/server/internal/session"
 	"github.com/sparklingstadt/typle-r/server/internal/store"
 )
@@ -18,9 +17,6 @@ import (
 // Store is what the handlers need of the database.
 type Store interface {
 	Ping(ctx context.Context) error
-	ReadRevision(ctx context.Context, owner string) (*store.Saved, error)
-	WriteRevision(ctx context.Context, owner string, revision int, change store.Change) (*store.Saved, error)
-	operation.Writer
 	AdminGallery(ctx context.Context) ([]store.AdminGalleryPack, error)
 	SetHidden(ctx context.Context, id string, hidden bool) (bool, error)
 	Admin(ctx context.Context, email, sub string) (bool, error)
@@ -88,9 +84,6 @@ type Config struct {
 	// Report is told of a failure that is answered with a 503, with the operation that failed (such as
 	// "workspace.read"), so that it can be sent to an error tracker. When nil the failure is only logged.
 	Report func(r *http.Request, err error, operation string)
-	// MeasureSaves keeps the time, status and size of every save (measured), when Store is a SaveMeter. FromEnv turns
-	// it on with TYPLE_MEASURE_SAVES=1.
-	MeasureSaves bool
 }
 
 type server struct {
@@ -101,7 +94,6 @@ type server struct {
 func New(c Config) http.Handler {
 	s := &server{config: c}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/workspace/records", s.measured(s.records))
 	mux.HandleFunc("/api/auth/signin", s.signin)
 	mux.HandleFunc(githubCallback, s.callback(providerGitHub))
 	mux.HandleFunc(ffpfCallback, s.callback(providerFFPF))

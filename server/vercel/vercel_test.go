@@ -30,12 +30,6 @@ func reset(t *testing.T) {
 type fakeStore struct{}
 
 func (fakeStore) Ping(context.Context) error { return nil }
-func (fakeStore) ReadRevision(context.Context, string) (*store.Saved, error) {
-	return nil, errors.New("not used")
-}
-func (fakeStore) WriteRevision(context.Context, string, int, store.Change) (*store.Saved, error) {
-	return nil, errors.New("not used")
-}
 func (fakeStore) Modify(context.Context, string, func(*workspace.Workspace) (bool, error)) (*workspace.Workspace, error) {
 	return nil, errors.New("not used")
 }

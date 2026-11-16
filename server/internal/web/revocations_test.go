@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -66,68 +65,6 @@ func cleared(response *httptest.ResponseRecorder) bool {
 	return c != nil && c.MaxAge < 0 && c.Value == ""
 }
 
-// A session of a login no later than the account's revocation is refused wherever the account's data is read or
-// changed, and a browser's cookie is removed; a login since is let in.
-func TestRevokedSessionIsRefused(t *testing.T) {
-	r := &revocations{}
-	h := newRevocationHarness(t, r)
-	before := h.sessionCookie("github:1", h.now.Add(-time.Hour))
-	r.revokedAt["github:1"] = h.now.Add(-time.Minute)
-	after := h.sessionCookie("github:1", h.now)
-
-	for _, c := range []struct {
-		method, path string
-		change       []func(*http.Request)
-	}{
-		{http.MethodPost, "/api/workspace/records", []func(*http.Request){withOrigin(testBase), withJSON(`{"accountId":"github:1"}`)}},
-		{http.MethodDelete, "/api/workspace/records", []func(*http.Request){withOrigin(testBase), withJSON(`{"accountId":"github:1"}`)}},
-	} {
-		response := h.do(c.method, c.path, append([]func(*http.Request){withCookie(before)}, c.change...)...)
-		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), "loginRequired") || !cleared(response) {
-			t.Errorf("%s %s with a revoked session = %d %s %v", c.method, c.path, response.Code, response.Body, response.Result().Cookies())
-		}
-	}
-	if r.reads != 0 || r.writes != 0 {
-		t.Fatalf("a revoked session reached the data: %d reads, %d writes", r.reads, r.writes)
-	}
-	// A login since is signed in (/api/workspace, which showed it before, is Next.js's now).
-	if response := h.do(http.MethodGet, "/api/auth/session", withCookie(after)); !strings.Contains(response.Body.String(), `"id":"github:1"`) || cleared(response) {
-		t.Fatalf("a login since the revocation = %d %s", response.Code, response.Body)
-	}
-	// Another account's revocation is not this one's.
-	if response := h.do(http.MethodGet, "/api/auth/session", withCookie(h.sessionCookie("github:2", h.now.Add(-time.Hour)))); !strings.Contains(response.Body.String(), `"id":"github:2"`) {
-		t.Fatalf("another account = %d %s", response.Code, response.Body)
-	}
-}
-
-// An app's revoked token is refused too, without a cookie to remove.
-func TestRevokedAppTokenIsRefused(t *testing.T) {
-	r := &revocations{}
-	h := newRevocationHarness(t, r)
-	token := h.keys.SealApp(session.New("github:1", "A", "", h.now.Add(-time.Hour)))
-	r.revokedAt["github:1"] = h.now.Add(-time.Minute)
-	response := h.do(http.MethodPost, "/api/workspace/records", bearer(token), withJSON(`{"accountId":"github:1"}`))
-	if response.Code != http.StatusUnauthorized || len(response.Result().Cookies()) != 0 {
-		t.Fatalf("records = %d %s %v", response.Code, response.Body, response.Result().Cookies())
-	}
-	if got := h.do(http.MethodGet, "/api/auth/session", bearer(token)); !strings.Contains(got.Body.String(), `"user":null`) {
-		t.Fatalf("session = %s", got.Body)
-	}
-}
-
-// When the revocations cannot be read, the data is not served: the database is as good as down.
-func TestRevocationsUnreadable(t *testing.T) {
-	r := &revocations{readErr: errors.New("down")}
-	h := newRevocationHarness(t, r)
-	response := h.do(http.MethodPost, "/api/workspace/records", withCookie(h.sessionCookie("github:1", h.now)), withOrigin(testBase), withJSON(`{"accountId":"github:1"}`))
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "databaseUnavailable") || cleared(response) {
-		t.Fatalf("records = %d %s", response.Code, response.Body)
-	}
-	if r.reads != 0 || len(h.reports) != 1 || h.reports[0] != "session.check" {
-		t.Fatalf("reads = %d, reports = %v", r.reads, h.reports)
-	}
-}
-
 // The session's answer names no one for a revoked session, and removes its cookie. When the revocations cannot be read
 // at once it goes on without them, as before.
 func TestSessionAnswerAndRevocations(t *testing.T) {
@@ -176,10 +113,10 @@ func TestSignoutEverywhere(t *testing.T) {
 		if response.Code != http.StatusNoContent || !cleared(response) || len(r.revoked) != 1 || r.revoked[0] != "github:1" {
 			t.Fatalf("signout = %d %s, revoked %v", response.Code, response.Body, r.revoked)
 		}
-		// The cookie it signed out with, and any other of a login until now, no longer reaches the data.
+		// The cookie it signed out with, and any other of a login until now, is signed out; a login since is not.
 		h.now = h.now.Add(time.Second)
-		if got := h.do(http.MethodPost, "/api/workspace/records", withCookie(cookie), withOrigin(testBase), withJSON(`{"accountId":"github:1"}`)); got.Code != http.StatusUnauthorized {
-			t.Fatalf("records after signing out everywhere = %d", got.Code)
+		if got := h.do(http.MethodGet, "/api/auth/session", withCookie(cookie)); !strings.Contains(got.Body.String(), `"user":null`) {
+			t.Fatalf("session after signing out everywhere = %d %s", got.Code, got.Body)
 		}
 		if got := h.do(http.MethodGet, "/api/auth/session", withCookie(h.sessionCookie("github:1", h.now))); !strings.Contains(got.Body.String(), `"id":"github:1"`) {
 			t.Fatalf("a new login = %d %s", got.Code, got.Body)
@@ -252,12 +189,4 @@ func TestSignoutEverywhere(t *testing.T) {
 			t.Fatalf("signout = %d, revoked %v", response.Code, r.revoked)
 		}
 	})
-}
-
-func withJSON(body string) func(*http.Request) {
-	return func(r *http.Request) {
-		r.Header.Set("Content-Type", "application/json")
-		r.Body = io.NopCloser(strings.NewReader(body))
-		r.ContentLength = int64(len(body))
-	}
 }

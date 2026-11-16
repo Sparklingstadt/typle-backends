@@ -58,33 +58,3 @@ func (s *server) revoked(r *http.Request, user session.Session) (bool, error) {
 	}
 	return user.RevokedBy(revokedAt), nil
 }
-
-// signedIn is owner, for a request that reads or changes the account's data: the session must also not have been
-// revoked. Otherwise it answers the request, and the caller answers only when it returns true: loginRequired without a
-// session or with a revoked one, whose cookie is then removed, and databaseUnavailable when the revocations cannot be
-// read, as the data cannot be either.
-func (s *server) signedIn(w http.ResponseWriter, r *http.Request) (session.Session, bool) {
-	user, f := s.account(w, r)
-	if f != nil {
-		s.fail(w, r, f)
-		return session.Session{}, false
-	}
-	return user, true
-}
-
-// account is signedIn without the answer: it only removes the cookie of a revoked session, and returns the failure.
-func (s *server) account(w http.ResponseWriter, r *http.Request) (session.Session, *failure) {
-	user, ok := s.owner(r)
-	if !ok {
-		return session.Session{}, refused(http.StatusUnauthorized, "loginRequired")
-	}
-	revoked, err := s.revoked(r, user)
-	if err != nil {
-		return session.Session{}, broken(err, "session.check", "databaseUnavailable")
-	}
-	if revoked {
-		s.dropSession(w, r)
-		return session.Session{}, refused(http.StatusUnauthorized, "loginRequired")
-	}
-	return user, nil
-}

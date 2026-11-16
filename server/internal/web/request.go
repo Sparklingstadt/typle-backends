@@ -7,12 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
-
-	"github.com/sparklingstadt/typle-r/server/internal/session"
 )
-
-// maxBodyBytes is MAX_WORKSPACE_BYTES (src/core/workspaceRequest.ts).
-const maxBodyBytes = 1 << 20
 
 var (
 	errTooLarge  = errors.New("request body is too large")
@@ -60,49 +55,6 @@ func readObject(r *http.Request, limit int64) (map[string]json.RawMessage, error
 		return nil, fmt.Errorf("%w: %w", errNotObject, err)
 	}
 	return fields, nil
-}
-
-// accountID is the request's accountId when it is a string.
-func accountID(fields map[string]json.RawMessage) (string, bool) {
-	var id string
-	return id, json.Unmarshal(fields["accountId"], &id) == nil
-}
-
-// saveRequest checks a request that saves, to /api/workspace or its records: the Origin of a cookie's request, a JSON
-// body, then the login. It reads the body as a JSON object, answering one that is not with invalid; the object's
-// account is the handler's to check. A body that cannot be read is reported as reported. Otherwise it answers the
-// request.
-func (s *server) saveRequest(w http.ResponseWriter, r *http.Request, reported, invalid string) (session.Session, map[string]json.RawMessage, bool) {
-	if !s.fromAppOrOrigin(r) || !jsonContent(r) {
-		refuse(w, http.StatusForbidden, "forbiddenRequest")
-		return session.Session{}, nil, false
-	}
-	user, ok := s.signedIn(w, r)
-	if !ok {
-		return session.Session{}, nil, false
-	}
-	fields, err := readObject(r, maxBodyBytes)
-	switch {
-	case err == nil:
-		return user, fields, true
-	case errors.Is(err, errNoBody):
-		refuse(w, http.StatusBadRequest, "emptyRequest")
-	case errors.Is(err, errTooLarge):
-		refuse(w, http.StatusRequestEntityTooLarge, "workspaceTooLarge")
-	case errors.Is(err, errNotObject):
-		refuse(w, http.StatusBadRequest, invalid)
-	default:
-		s.report(r, err, reported)
-		refuse(w, http.StatusServiceUnavailable, "workspaceSaveFailed")
-	}
-	return session.Session{}, nil, false
-}
-
-// fromAppOrOrigin reports whether a request may change the account's data: the Origin keeps other sites from changing it
-// with the browser's cookie. An app's (iPad, Mac, Android or Windows) token is not sent by a browser on its own, so its
-// requests, which have no Origin, need none.
-func (s *server) fromAppOrOrigin(r *http.Request) bool {
-	return fromApp(r) || s.sameOrigin(r)
 }
 
 // sameOrigin reports whether the request comes from the app's own pages: its Origin is that of BaseURL, written as a

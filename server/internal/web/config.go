@@ -20,8 +20,8 @@ import (
 // the local login alone needs no OAuth App. FFPF ID is the same: unless all three of its settings are set FFPF is nil,
 // and when only some are set one warning is logged, as that is a mistake to fix; when none is set it is not configured,
 // and nothing is said. Without it the FFPF ID login and the administrator's dashboard login answer 503.
-// TYPLE_MEASURE_SAVES=1 turns MeasureSaves on. The Store and Report are left to the caller: nothing is opened here, and the
-// Keys always come from a successful session.NewKeys, because the zero Keys cannot seal a cookie.
+// The Store and Report are left to the caller: nothing is opened here, and the Keys always come from a successful
+// session.NewKeys, because the zero Keys cannot seal a cookie.
 //
 // local is for the typle-web command: only then may LocalLogin be turned on. It is on under the conditions of
 // localDevelopmentEnabled (src/lib/localDevelopment.ts) except NODE_ENV, which a Go server does not have.
@@ -46,8 +46,7 @@ func FromEnv(getenv func(string) string, local bool) (Config, error) {
 	if len(problems) > 0 {
 		return Config{}, errors.New("the login settings are incomplete: " + strings.Join(problems, "; "))
 	}
-	config := Config{Keys: keys, BaseURL: base, LocalLogin: local && localLoginAllowed(getenv, base),
-		MeasureSaves: getenv("TYPLE_MEASURE_SAVES") == "1"}
+	config := Config{Keys: keys, BaseURL: base, LocalLogin: local && localLoginAllowed(getenv, base)}
 	if id != "" && clientSecret != "" {
 		// Assigned only here: a nil *auth.OAuth in the interface would not be nil.
 		config.OAuth, config.GitHub = auth.NewOAuth(id, clientSecret), auth.NewGitHub()

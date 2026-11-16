@@ -3,14 +3,10 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/sparklingstadt/typle-r/server/internal/session"
 	"github.com/sparklingstadt/typle-r/server/internal/store"
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
@@ -19,8 +15,6 @@ import (
 // the bodies and answers they send and check.
 
 const testBase = "http://localhost:3000"
-
-var testOwner = "github:4242"
 
 // fakeWorkspaces stands in for the database where a test is about the handler: what reaches the store and how the
 // handler answers what comes back.
@@ -67,38 +61,6 @@ func (f *fakeWorkspaces) WriteRevision(_ context.Context, _ string, revision int
 	return &store.Saved{Lists: lists, Packs: packs, Devices: devices, Interests: interests, Revision: revision + 1}, nil
 }
 
-type harness struct {
-	handler http.Handler
-	keys    session.Keys
-	reports []string
-}
-
-func newHarness(t *testing.T, s Store, base string) *harness {
-	t.Helper()
-	keys, err := session.NewKeys("test secret")
-	if err != nil {
-		t.Fatal(err)
-	}
-	parsed, err := url.Parse(base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &harness{keys: keys}
-	h.handler = New(Config{Store: s, Keys: keys, BaseURL: parsed, Report: func(r *http.Request, err error, operation string) {
-		h.reports = append(h.reports, operation)
-	}})
-	return h
-}
-
-func (h *harness) cookie(sub string, secure bool) *http.Cookie {
-	return &http.Cookie{Name: session.CookieName(secure), Value: h.keys.Seal(session.New(sub, "", "", time.Now()))}
-}
-
-// payload is a request body of the account's, with the fields the test is about.
-func payload(owner, fields string) string {
-	return `{"accountId":"` + owner + `",` + fields + `}`
-}
-
 func expectError(t *testing.T, response *httptest.ResponseRecorder, status int, key string) {
 	t.Helper()
 	if response.Code != status || strings.TrimSpace(response.Body.String()) != `{"error":"`+key+`"}` {
@@ -121,11 +83,4 @@ func decodeBody(t *testing.T, response *httptest.ResponseRecorder) map[string]js
 		t.Fatalf("body %q: %v", response.Body, err)
 	}
 	return fields
-}
-
-var oneList = aList("one", "One")
-
-// aList is a list that passes validateList, with this id and name.
-func aList(id, name string) string {
-	return `{"id":"` + id + `","name":"` + name + `","createdAt":"2026-09-06","words":[{"display":"a","input":"a","annotation":""}],"records":[]}`
 }

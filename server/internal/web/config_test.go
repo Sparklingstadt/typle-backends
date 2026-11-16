@@ -298,14 +298,3 @@ func TestUnavailable(t *testing.T) {
 		t.Fatalf("headers = %v", header)
 	}
 }
-
-// Saves are measured only when TYPLE_MEASURE_SAVES is 1.
-func TestFromEnvMeasureSaves(t *testing.T) {
-	for value, want := range map[string]bool{"": false, "0": false, "true": false, "1": true} {
-		values := validEnv()
-		values["TYPLE_MEASURE_SAVES"] = value
-		if config, err := FromEnv(env(values), false); err != nil || config.MeasureSaves != want {
-			t.Errorf("TYPLE_MEASURE_SAVES=%q: MeasureSaves = %v, %v", value, config.MeasureSaves, err)
-		}
-	}
-}
