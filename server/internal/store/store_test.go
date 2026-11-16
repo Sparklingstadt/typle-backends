@@ -2,13 +2,9 @@ package store
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -17,20 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
-
-// read returns the owner's saved workspace, such as github:12345's. An account that has saved nothing yet has the
-// initial workspace, as in the app: empty since v0.98.0. Only the tests read a workspace whole like this; the server
-// reads it as it changes it (Modify) or as the app asks for it (ReadRevision).
-func (s *Store) read(ctx context.Context, owner string) (*workspace.Workspace, error) {
-	saved, err := readSaved(ctx, s.pool, owner)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return workspace.Initial()
-	}
-	if err != nil {
-		return nil, err
-	}
-	return decodeSaved(owner, saved.Lists, saved.Devices, saved.Packs)
-}
 
 func TestConnString(t *testing.T) {
 	cases := map[string]string{
@@ -70,34 +52,6 @@ func TestConnString(t *testing.T) {
 			t.Errorf("ConnString(%q) succeeded", input)
 		}
 	}
-}
-
-// The database tests need the app's tables (npm run db:migrate). They add rows under random owners and delete them.
-func database(t *testing.T) (string, *pgx.Conn) {
-	t.Helper()
-	connection := os.Getenv("TYPLE_TEST_DATABASE_URL")
-	if connection == "" {
-		t.Skip("set TYPLE_TEST_DATABASE_URL to a migrated test database")
-	}
-	conn, err := pgx.Connect(context.Background(), connection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { conn.Close(context.Background()) })
-	return connection, conn
-}
-
-func owner(t *testing.T, conn *pgx.Conn) string {
-	t.Helper()
-	random := make([]byte, 8)
-	_, _ = rand.Read(random)
-	id := "go-test:" + hex.EncodeToString(random)
-	t.Cleanup(func() {
-		_, _ = conn.Exec(context.Background(), `DELETE FROM typle_workspaces WHERE owner_id = $1`, id)
-		_, _ = conn.Exec(context.Background(), `DELETE FROM typle_shared_packs WHERE owner_id = $1`, id)
-		_, _ = conn.Exec(context.Background(), `DELETE FROM typle_records WHERE owner_id = $1`, id)
-	})
-	return id
 }
 
 func TestReadSavedWorkspace(t *testing.T) {
@@ -175,25 +129,6 @@ func TestOpenAppPing(t *testing.T) {
 	if config := s.pool.Config(); config.MaxConns != 5 || config.MaxConnIdleTime != 30*time.Second {
 		t.Fatalf("pool = %d connections, idle %v", config.MaxConns, config.MaxConnIdleTime)
 	}
-}
-
-func open(t *testing.T, connection string) *Store {
-	t.Helper()
-	s, err := OpenApp(context.Background(), connection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	return s
-}
-
-func row(t *testing.T, conn *pgx.Conn, id string) (lists string, revision int, updated time.Time) {
-	t.Helper()
-	if err := conn.QueryRow(context.Background(), `SELECT lists::text, revision, updated_at FROM typle_workspaces WHERE owner_id = $1`, id).
-		Scan(&lists, &revision, &updated); err != nil {
-		t.Fatal(err)
-	}
-	return lists, revision, updated
 }
 
 // addList puts a list at the end, in a pack of its own, as a save from the app does.
@@ -475,20 +410,6 @@ func listRecords(t *testing.T, s *Store, owner, listID string) json.RawMessage {
 	}
 	t.Fatalf("no list %s in %s", listID, saved.Lists)
 	return nil
-}
-
-func sameJSON(t *testing.T, got json.RawMessage, want string) {
-	t.Helper()
-	var g, w any
-	if err := json.Unmarshal(got, &g); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(want), &w); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(g, w) {
-		t.Fatalf("got %s, want %s", got, want)
-	}
 }
 
 func newLists(n int) []workspace.List {
