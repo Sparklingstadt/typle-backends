@@ -100,6 +100,9 @@ type Config struct {
 	// Report is told of a failure that is answered with a 503, with the operation that failed (such as
 	// "workspace.read"), so that it can be sent to an error tracker. When nil the failure is only logged.
 	Report func(r *http.Request, err error, operation string)
+	// MeasureSaves keeps the time, status and size of every save (measured), when Store is a SaveMeter. FromEnv turns
+	// it on with TYPLE_MEASURE_SAVES=1.
+	MeasureSaves bool
 }
 
 type server struct {
@@ -111,8 +114,8 @@ func New(c Config) http.Handler {
 	s := &server{config: c}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
-	mux.HandleFunc("/api/workspace", s.workspace)
-	mux.HandleFunc("/api/workspace/records", s.records)
+	mux.HandleFunc("/api/workspace", s.measured(s.workspace))
+	mux.HandleFunc("/api/workspace/records", s.measured(s.records))
 	mux.HandleFunc("/api/shares", s.shares)
 	mux.HandleFunc("/api/shared", s.shared)
 	mux.HandleFunc("/api/gallery", s.gallery)

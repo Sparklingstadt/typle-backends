@@ -298,6 +298,17 @@ func TestUnavailable(t *testing.T) {
 	}
 }
 
+// Saves are measured only when TYPLE_MEASURE_SAVES is 1.
+func TestFromEnvMeasureSaves(t *testing.T) {
+	for value, want := range map[string]bool{"": false, "0": false, "true": false, "1": true} {
+		values := validEnv()
+		values["TYPLE_MEASURE_SAVES"] = value
+		if config, err := FromEnv(env(values), false); err != nil || config.MeasureSaves != want {
+			t.Errorf("TYPLE_MEASURE_SAVES=%q: MeasureSaves = %v, %v", value, config.MeasureSaves, err)
+		}
+	}
+}
+
 // OnVercel is for server/vercel to set: neither the environment nor the typle-web flag turns it on.
 func TestFromEnvLeavesOnVercelOff(t *testing.T) {
 	values := validEnv()
