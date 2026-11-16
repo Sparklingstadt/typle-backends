@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/sparklingstadt/typle-r/server/internal/store"
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
@@ -27,13 +26,8 @@ type shareJSON struct {
 	Hidden    bool   `json:"hidden"`
 }
 
-// jsTime is a time as JavaScript's Date.prototype.toISOString writes it: UTC, with milliseconds.
-func jsTime(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.000Z07:00")
-}
-
 func shareOf(share store.Share) shareJSON {
-	return shareJSON{share.ID, share.PackID, share.Name, jsTime(share.UpdatedAt), share.Listed, share.Hidden}
+	return shareJSON{share.ID, share.PackID, share.Name, workspace.FormatTime(share.UpdatedAt), share.Listed, share.Hidden}
 }
 
 // Public serves /api/shared and the gallery's reads (/api/gallery, /api/gallery/categories) from the database alone, for
