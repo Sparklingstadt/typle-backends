@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/sparklingstadt/typle-r/server/internal/auth"
@@ -275,4 +277,37 @@ func (s *server) setHidden(r *http.Request, id string, hidden bool) *failure {
 		return refused(http.StatusNotFound, "sharedPackNotFound")
 	}
 	return nil
+}
+
+// queryPage reads the query's page, which is fallback when it is left out. ok is false when it is not a number.
+func queryPage(r *http.Request, fallback int) (page int, ok bool) {
+	value := r.URL.Query().Get("page")
+	if value == "" {
+		return fallback, true
+	}
+	page, err := strconv.Atoi(value)
+	return page, err == nil
+}
+
+// maxIDBodyBytes is the most a report or a hide needs: a pack id and a reason, and room to spare.
+const maxIDBodyBytes = 4 << 10
+
+// readStringFields reads a body that is a JSON object with exactly the string members names, none of them empty or
+// null, and no other member.
+func readStringFields(r *http.Request, limit int64, names ...string) (map[string]string, bool) {
+	fields, err := readObject(r, limit)
+	if err != nil || len(fields) != len(names) {
+		return nil, false
+	}
+	values := make(map[string]string, len(names))
+	for _, name := range names {
+		raw, ok := fields[name]
+		var value string
+		// null would unmarshal into value without an error and leave it empty, which is refused with it.
+		if !ok || json.Unmarshal(raw, &value) != nil || value == "" {
+			return nil, false
+		}
+		values[name] = value
+	}
+	return values, true
 }

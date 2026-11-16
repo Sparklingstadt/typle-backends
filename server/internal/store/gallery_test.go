@@ -46,31 +46,6 @@ func listedIn(offset time.Duration) *time.Time {
 	return &at
 }
 
-func TestCountAddedOnlyListed(t *testing.T) {
-	ctx := context.Background()
-	connection, conn := database(t)
-	id := owner(t, conn)
-	s := open(t, connection)
-	listed := insertShare(t, conn, id, 1, galleryRow{pack: map[string]any{"name": "a"}, listed: listedIn(0)})
-	unlisted := insertShare(t, conn, id, 2, galleryRow{pack: map[string]any{"name": "b"}})
-	hidden := insertShare(t, conn, id, 3, galleryRow{pack: map[string]any{"name": "c"}, listed: listedIn(0), hidden: listedIn(0)})
-	added := func(share string) int {
-		var count int
-		if err := conn.QueryRow(ctx, `SELECT add_count FROM typle_shared_packs WHERE id = $1`, share).Scan(&count); err != nil {
-			t.Fatal(err)
-		}
-		return count
-	}
-	for _, share := range []string{listed, unlisted, hidden, workspace.NewID(), "not-a-uuid"} {
-		if err := s.CountAdded(ctx, share); err != nil {
-			t.Errorf("CountAdded(%q): %v", share, err)
-		}
-	}
-	if added(listed) != 1 || added(unlisted) != 0 || added(hidden) != 0 {
-		t.Errorf("counts = %d %d %d", added(listed), added(unlisted), added(hidden))
-	}
-}
-
 func reportRows(t *testing.T, conn *pgx.Conn, share string) int {
 	t.Helper()
 	var n int
@@ -78,31 +53,6 @@ func reportRows(t *testing.T, conn *pgx.Conn, share string) int {
 		t.Fatal(err)
 	}
 	return n
-}
-
-func TestReport(t *testing.T) {
-	ctx := context.Background()
-	connection, conn := database(t)
-	id := owner(t, conn)
-	s := open(t, connection)
-	listed := insertShare(t, conn, id, 1, galleryRow{pack: map[string]any{"name": "a"}, listed: listedIn(0)})
-	unlisted := insertShare(t, conn, id, 2, galleryRow{pack: map[string]any{"name": "b"}})
-	hidden := insertShare(t, conn, id, 3, galleryRow{pack: map[string]any{"name": "c"}, listed: listedIn(0), hidden: listedIn(0)})
-
-	if ok, err := s.Report(ctx, listed, "spam"); err != nil || !ok {
-		t.Fatalf("Report(listed) = %v, %v", ok, err)
-	}
-	if n := reportRows(t, conn, listed); n != 1 {
-		t.Errorf("rows = %d, want 1", n)
-	}
-	for _, target := range []string{unlisted, hidden, workspace.NewID(), "x"} {
-		if ok, err := s.Report(ctx, target, "spam"); err != nil || ok {
-			t.Errorf("Report(%q) = %v, %v; want false, nil", target, ok, err)
-		}
-	}
-	if reportRows(t, conn, unlisted) != 0 || reportRows(t, conn, hidden) != 0 {
-		t.Error("a report was recorded for an unlisted or hidden share")
-	}
 }
 
 func TestReportsGoWithShare(t *testing.T) {
@@ -117,8 +67,9 @@ func TestReportsGoWithShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := s.Report(ctx, share.ID, "other"); err != nil || !ok {
-		t.Fatalf("Report = %v, %v", ok, err)
+	// Next.js records the report (src/server/galleryWrites.ts); what matters here is that it goes with the share.
+	if _, err := conn.Exec(ctx, `INSERT INTO typle_gallery_reports (id, share_id, reason) VALUES ($1, $2, 'other')`, workspace.NewID(), share.ID); err != nil {
+		t.Fatal(err)
 	}
 	if err := s.DeleteShare(ctx, id, pack); err != nil {
 		t.Fatal(err)
@@ -146,7 +97,7 @@ func TestAdminGallery(t *testing.T) {
 	hiddenOnly := insertShare(t, conn, id, 6, galleryRow{pack: pack("hiddenOnly"), hidden: listedIn(0)})
 	linkOnly := insertShare(t, conn, id, 7, galleryRow{pack: pack("linkOnly")})
 
-	// Reports are inserted directly (Report refuses hidden shares), each at a fixed time: three for many, two for newer
+	// Reports are inserted directly (a report of a hidden share is refused), each at a fixed time: three for many, two for newer
 	// and older (newer has the more recent last report), and one each for the rest at the same time, so that only
 	// listed_at (the newest first, a share never listed last) tells them apart.
 	base := time.Now().Add(-time.Hour)

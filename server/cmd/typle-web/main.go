@@ -1,4 +1,4 @@
-// Command typle-web serves the app's Go backend (/api/workspace, /api/shares, /api/gallery/added, /api/gallery/reports, /api/admin/* and /api/auth/*) locally, with the same
+// Command typle-web serves the app's Go backend (/api/workspace, /api/shares, /api/admin/* and /api/auth/*) locally, with the same
 // handler as the Vercel functions (server/vercel). It reads the environment only: npm run dev passes the values of .env.local and
 // .env, this command does not load them. Local login (POST /api/auth/local) is available under the same conditions as
 // the app's: see web.FromEnv.

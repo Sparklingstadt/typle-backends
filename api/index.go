@@ -1,7 +1,6 @@
 // Package handler is the one Vercel Go function of the app's backend. vercel.json rewrites every backend path
-// (/api/workspace, /api/workspace/records, /api/shares, /api/gallery/added, /api/gallery/reports, /api/auth/*,
-// /api/admin/*) to it, and server/vercel routes on the
-// original request path, so the whole backend counts as one function per deployment.
+// (/api/workspace, /api/workspace/records, /api/shares, /api/auth/*, /api/admin/*) to it, and server/vercel routes on
+// the original request path, so the whole backend counts as one function per deployment.
 package handler
 
 import (

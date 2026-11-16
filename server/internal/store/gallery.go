@@ -3,50 +3,13 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
 
 // The gallery is the shares the owners list (listed_at) and the operator has not hidden (hidden_at). Next.js reads it
 // (src/server/gallery.ts); here are its counts, its reports and the administrator's part.
-
-// CountAdded counts one more addition of the listed pack id to someone's packs. A pack that is not listed, is hidden,
-// does not exist or has an id that is not a UUID is left as it is, without an error.
-func (s *Store) CountAdded(ctx context.Context, id string) error {
-	if !isUUID(id) {
-		return nil
-	}
-	_, err := s.pool.Exec(ctx, `UPDATE typle_shared_packs SET add_count = add_count + 1
-		WHERE id = $1 AND listed_at IS NOT NULL AND hidden_at IS NULL`, id)
-	return err
-}
-
-// ReportReasons are the reasons a gallery pack can be reported for.
-var ReportReasons = []string{"inappropriate", "spam", "personalInfo", "other"}
-
-// Report records a report of a listed, unhidden share. It returns false when there is no such share (or id is not a
-// UUID); reason is checked by the caller.
-func (s *Store) Report(ctx context.Context, id, reason string) (bool, error) {
-	if !isUUID(id) {
-		return false, nil
-	}
-	tag, err := s.pool.Exec(ctx, `INSERT INTO typle_gallery_reports (id, share_id, reason)
-		SELECT $1, id, $3 FROM typle_shared_packs WHERE id = $2 AND listed_at IS NOT NULL AND hidden_at IS NULL`,
-		workspace.NewID(), id, reason)
-	// The share can be deleted between the statement's snapshot and the foreign key check; it is gone then.
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() == 1, nil
-}
 
 // AdminGalleryPack is a listed or hidden pack as the administrator sees it, with its reports.
 type AdminGalleryPack struct {

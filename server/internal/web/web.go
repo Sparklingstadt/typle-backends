@@ -24,9 +24,6 @@ type Store interface {
 	PutShare(ctx context.Context, owner, packID string, listed *bool) (*store.Share, error)
 	DeleteShare(ctx context.Context, owner, packID string) error
 	ListShares(ctx context.Context, owner string) ([]store.Share, error)
-	CountAdded(ctx context.Context, id string) error
-	CountGalleryHit(ctx context.Context, action string, client []byte) (hits int, windowEnd time.Time, err error)
-	Report(ctx context.Context, id, reason string) (bool, error)
 	AdminGallery(ctx context.Context) ([]store.AdminGalleryPack, error)
 	SetHidden(ctx context.Context, id string, hidden bool) (bool, error)
 	Admin(ctx context.Context, email, sub string) (bool, error)
@@ -91,9 +88,6 @@ type Config struct {
 	// LocalLogin turns on POST /api/auth/local, which signs in as a made-up local account for development. Off, the
 	// path does not exist.
 	LocalLogin bool
-	// OnVercel is whether the app runs behind Vercel (server/vercel sets it, not FromEnv), where the forwarding headers are
-	// written by Vercel and tell the client's IP. Elsewhere they are the client's own words and are ignored.
-	OnVercel bool
 	// Report is told of a failure that is answered with a 503, with the operation that failed (such as
 	// "workspace.read"), so that it can be sent to an error tracker. When nil the failure is only logged.
 	Report func(r *http.Request, err error, operation string)
@@ -113,8 +107,6 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("/api/workspace", s.measured(s.workspace))
 	mux.HandleFunc("/api/workspace/records", s.measured(s.records))
 	mux.HandleFunc("/api/shares", s.shares)
-	mux.HandleFunc("/api/gallery/added", s.galleryAdded)
-	mux.HandleFunc("/api/gallery/reports", s.galleryReport)
 	mux.HandleFunc("/api/auth/signin", s.signin)
 	mux.HandleFunc(githubCallback, s.callback(providerGitHub))
 	mux.HandleFunc(ffpfCallback, s.callback(providerFFPF))

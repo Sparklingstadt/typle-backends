@@ -47,11 +47,6 @@ func (fakeStore) ListShares(context.Context, string) ([]store.Share, error) {
 	return nil, errors.New("not used")
 }
 
-func (fakeStore) CountAdded(context.Context, string) error { return nil }
-func (fakeStore) CountGalleryHit(context.Context, string, []byte) (int, time.Time, error) {
-	return 1, time.Now().Add(time.Minute), nil
-}
-func (fakeStore) Report(context.Context, string, string) (bool, error)           { return false, nil }
 func (fakeStore) AdminGallery(context.Context) ([]store.AdminGalleryPack, error) { return nil, nil }
 func (fakeStore) SetHidden(context.Context, string, bool) (bool, error)          { return false, nil }
 func (fakeStore) Admin(context.Context, string, string) (bool, error)            { return false, nil }
@@ -453,17 +448,4 @@ func TestSharesDatabaseDown(t *testing.T) {
 	for _, path := range []string{"/api/shares"} {
 		expect(t, get(path), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	}
-}
-
-// /api/gallery/added checks the Origin against AUTH_URL, so it needs the login settings. (The gallery's reads are
-// Next.js's.)
-func TestGalleryAddedWithoutSecret(t *testing.T) {
-	reset(t)
-	settings(t)
-	t.Setenv("AUTH_SECRET", "")
-	t.Setenv("AUTH_URL", "")
-	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	post := httptest.NewRecorder()
-	backend.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/api/gallery/added?id=x", nil))
-	expect(t, post, http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 }

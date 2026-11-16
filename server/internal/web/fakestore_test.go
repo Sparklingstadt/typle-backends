@@ -49,14 +49,6 @@ func (f fakeStore) DeleteShare(context.Context, string, string) error { return f
 
 func (f fakeStore) ListShares(context.Context, string) ([]store.Share, error) { return nil, f.err }
 
-func (f fakeStore) CountAdded(context.Context, string) error { return f.err }
-
-func (f fakeStore) CountGalleryHit(context.Context, string, []byte) (int, time.Time, error) {
-	return 1, time.Now().Add(time.Minute), f.err
-}
-
-func (f fakeStore) Report(context.Context, string, string) (bool, error) { return false, f.err }
-
 func (f fakeStore) AdminGallery(context.Context) ([]store.AdminGalleryPack, error) { return nil, f.err }
 
 func (f fakeStore) SetHidden(context.Context, string, bool) (bool, error) { return false, f.err }

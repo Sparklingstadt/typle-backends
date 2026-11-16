@@ -308,14 +308,3 @@ func TestFromEnvMeasureSaves(t *testing.T) {
 		}
 	}
 }
-
-// OnVercel is for server/vercel to set: neither the environment nor the typle-web flag turns it on.
-func TestFromEnvLeavesOnVercelOff(t *testing.T) {
-	values := validEnv()
-	values["VERCEL"] = "1"
-	for _, local := range []bool{true, false} {
-		if config, err := FromEnv(env(values), local); err != nil || config.OnVercel {
-			t.Fatalf("local=%v: OnVercel = %v, %v", local, config.OnVercel, err)
-		}
-	}
-}
