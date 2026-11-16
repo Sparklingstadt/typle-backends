@@ -88,7 +88,7 @@ func TestOfficialPacks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The same catalog ids, in the same order, as officialPacks() in src/plugins/packs/catalog.ts.
+	// The same catalog ids, in the same order, as officialPacks() in src/core/packs/catalog.ts.
 	if len(official) != 71 || official[0].CatalogID != "pack-8f3cf116-1f9f-4579-a071-e600094b104d" ||
 		official[1].CatalogID != "pack-ef974a4b-3c7a-4eeb-9979-6721a0a1c81a" {
 		t.Fatalf("official = %d packs, first %v", len(official), official[:min(2, len(official))])

@@ -106,7 +106,7 @@ func TestPacksMatchApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	originals, err := os.ReadDir(filepath.Join("..", "..", "..", "src", "plugins", "packs", "commands"))
+	originals, err := os.ReadDir(filepath.Join("..", "..", "..", "src", "core", "packs", "commands"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,15 +126,15 @@ func TestPacksMatchApp(t *testing.T) {
 		copyNames = append(copyNames, entry.Name())
 	}
 	if !slices.Equal(originalNames, copyNames) {
-		t.Fatal("command files differ from src/plugins/packs; run go generate ./...")
+		t.Fatal("command files differ from src/core/packs; run go generate ./...")
 	}
 	for name, copy := range copies {
-		original, err := os.ReadFile(filepath.Join("..", "..", "..", "src", "plugins", "packs", name))
+		original, err := os.ReadFile(filepath.Join("..", "..", "..", "src", "core", "packs", name))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(original, copy) {
-			t.Errorf("packs/%s differs from src/plugins/packs; run go generate ./...", name)
+			t.Errorf("packs/%s differs from src/core/packs; run go generate ./...", name)
 		}
 	}
 }

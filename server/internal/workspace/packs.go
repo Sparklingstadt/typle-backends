@@ -7,7 +7,7 @@ import (
 	"slices"
 )
 
-// Copies of src/plugins/packs, made by scripts/generate-packs.cjs (npm run packs:generate) and checked against the
+// Copies of src/core/packs, made by scripts/generate-packs.cjs (npm run packs:generate) and checked against the
 // originals by TestPacksMatchApp.
 //
 //go:generate node ../../../scripts/generate-packs.cjs
@@ -21,13 +21,13 @@ var (
 )
 
 // Initial is the workspace before anything is saved: no packs, lists or registered devices, as initialLibrary in
-// src/plugins/packs/index.ts is since v0.98.0. Official packs are followed from the catalog (see OfficialPacks).
+// src/core/packs/index.ts is since v0.98.0. Official packs are followed from the catalog (see OfficialPacks).
 func Initial() (*Workspace, error) {
 	return &Workspace{Packs: []Pack{}, Lists: []List{}, Devices: []Device{}}, nil
 }
 
-// OfficialPacks follows officialPacks (src/plugins/packs/catalog.ts): the packs of officialLibrary
-// (src/plugins/packs/index.ts), made of the lists of initialLists as lists saved before packs existed are, each with
+// OfficialPacks follows officialPacks (src/core/packs/catalog.ts): the packs of officialLibrary
+// (src/core/packs/index.ts), made of the lists of initialLists as lists saved before packs existed are, each with
 // its lists in the saved shape. Each pack's catalog id is its own id, at version 1. Every call reads them anew, so the
 // caller may change what it gets.
 func OfficialPacks() ([]OfficialPack, error) {

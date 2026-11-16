@@ -45,7 +45,7 @@ func earlier(a, b string) bool {
 }
 
 // convertLibrary follows convertLibrary (src/core/wordPacks.ts): one pack for each group, named after it, and one for
-// each list without a group, named after the list. The catalog's lists (src/plugins/packs) are written so.
+// each list without a group, named after the list. The catalog's lists (src/core/packs) are written so.
 func convertLibrary(lists []List) ([]Pack, []List) {
 	packs := []Pack{}
 	packOf := map[string]int{}
