@@ -39,13 +39,6 @@ func (fakeStore) WriteRevision(context.Context, string, int, store.Change) (*sto
 func (fakeStore) Modify(context.Context, string, func(*workspace.Workspace) (bool, error)) (*workspace.Workspace, error) {
 	return nil, errors.New("not used")
 }
-func (fakeStore) PutShare(context.Context, string, string, *bool) (*store.Share, error) {
-	return nil, errors.New("not used")
-}
-func (fakeStore) DeleteShare(context.Context, string, string) error { return errors.New("not used") }
-func (fakeStore) ListShares(context.Context, string) ([]store.Share, error) {
-	return nil, errors.New("not used")
-}
 
 func (fakeStore) AdminGallery(context.Context) ([]store.AdminGalleryPack, error) { return nil, nil }
 func (fakeStore) SetHidden(context.Context, string, bool) (bool, error)          { return false, nil }
@@ -419,33 +412,4 @@ func TestHandlerUnreachableDatabase(t *testing.T) {
 	settings(t)
 	t.Setenv("DATABASE_URL", "postgresql://typle@127.0.0.1:1/typle?connect_timeout=1")
 	expect(t, serve(t), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
-}
-
-// /api/shares is the owner's, and answers as /api/workspace does without the login settings.
-func TestSharesWithoutSecret(t *testing.T) {
-	reset(t)
-	settings(t)
-	t.Setenv("AUTH_SECRET", "")
-	t.Setenv("AUTH_URL", "")
-	var opened atomic.Int32
-	backend.open = func(context.Context, string) (web.Store, error) { opened.Add(1); return fakeStore{}, nil }
-	expect(t, get("/api/shares"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
-	if opened.Load() != 0 {
-		t.Fatal("the database was opened for /api/shares without the login settings")
-	}
-
-	t.Setenv("AUTH_SECRET", "secret")
-	t.Setenv("AUTH_URL", "https://typle.example")
-	expect(t, get("/api/shares"), http.StatusUnauthorized, `{"error":"loginRequired"}`)
-}
-
-// While the database does not open, /api/shares says databaseUnavailable.
-func TestSharesDatabaseDown(t *testing.T) {
-	reset(t)
-	settings(t)
-	backend.retryAfter = 0
-	backend.open = func(context.Context, string) (web.Store, error) { return nil, errors.New("connection refused") }
-	for _, path := range []string{"/api/shares"} {
-		expect(t, get(path), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
-	}
 }

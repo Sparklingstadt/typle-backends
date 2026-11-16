@@ -21,9 +21,6 @@ type Store interface {
 	ReadRevision(ctx context.Context, owner string) (*store.Saved, error)
 	WriteRevision(ctx context.Context, owner string, revision int, change store.Change) (*store.Saved, error)
 	operation.Writer
-	PutShare(ctx context.Context, owner, packID string, listed *bool) (*store.Share, error)
-	DeleteShare(ctx context.Context, owner, packID string) error
-	ListShares(ctx context.Context, owner string) ([]store.Share, error)
 	AdminGallery(ctx context.Context) ([]store.AdminGalleryPack, error)
 	SetHidden(ctx context.Context, id string, hidden bool) (bool, error)
 	Admin(ctx context.Context, email, sub string) (bool, error)
@@ -106,7 +103,6 @@ func New(c Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/workspace", s.measured(s.workspace))
 	mux.HandleFunc("/api/workspace/records", s.measured(s.records))
-	mux.HandleFunc("/api/shares", s.shares)
 	mux.HandleFunc("/api/auth/signin", s.signin)
 	mux.HandleFunc(githubCallback, s.callback(providerGitHub))
 	mux.HandleFunc(ffpfCallback, s.callback(providerFFPF))

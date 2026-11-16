@@ -49,31 +49,6 @@ func TestReadObject(t *testing.T) {
 	}
 }
 
-// Every way a share body can be wrong is the same refusal, a stream that breaks included.
-func TestReadShareBody(t *testing.T) {
-	for name, body := range map[string]io.Reader{
-		"no body":        nil,
-		"too large":      strings.NewReader(`{"packId":"` + strings.Repeat("p", maxShareBodyBytes) + `"}`),
-		"broken stream":  brokenBody{},
-		"not an object":  strings.NewReader(`[]`),
-		"unknown member": strings.NewReader(`{"packId":"p","other":1}`),
-		"no pack":        strings.NewReader(`{"listed":true}`),
-		"empty pack":     strings.NewReader(`{"packId":""}`),
-		"null listed":    strings.NewReader(`{"packId":"p","listed":null}`),
-	} {
-		if _, _, ok := readShareBody(bodyRequest(body)); ok {
-			t.Errorf("%s: read", name)
-		}
-	}
-	packID, listed, ok := readShareBody(bodyRequest(strings.NewReader(`{"packId":"p","listed":false}`)))
-	if !ok || packID != "p" || listed == nil || *listed {
-		t.Fatalf("packID = %q, listed = %v, ok = %v", packID, listed, ok)
-	}
-	if _, listed, ok := readShareBody(bodyRequest(strings.NewReader(`{"packId":"p"}`))); !ok || listed != nil {
-		t.Fatalf("listed = %v, ok = %v", listed, ok)
-	}
-}
-
 func TestReadStringFields(t *testing.T) {
 	for name, body := range map[string]io.Reader{
 		"no body":        nil,

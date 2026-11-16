@@ -465,3 +465,6 @@ func TestAdminGallery(t *testing.T) {
 		t.Fatalf("reports = %v", h.reports)
 	}
 }
+
+// aSharedID is a link id as the links are written.
+const aSharedID = "0b6f2c1e-3d4a-4f5b-8c9d-0e1f2a3b4c5d"

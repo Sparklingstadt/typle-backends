@@ -41,14 +41,6 @@ func TestNotFound(t *testing.T) {
 	}
 }
 
-func (f fakeStore) PutShare(context.Context, string, string, *bool) (*store.Share, error) {
-	return nil, f.err
-}
-
-func (f fakeStore) DeleteShare(context.Context, string, string) error { return f.err }
-
-func (f fakeStore) ListShares(context.Context, string) ([]store.Share, error) { return nil, f.err }
-
 func (f fakeStore) AdminGallery(context.Context) ([]store.AdminGalleryPack, error) { return nil, f.err }
 
 func (f fakeStore) SetHidden(context.Context, string, bool) (bool, error) { return false, f.err }

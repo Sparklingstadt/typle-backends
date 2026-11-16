@@ -81,9 +81,6 @@ func TestRevokedSessionIsRefused(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/workspace", nil},
 		{http.MethodPut, "/api/workspace", []func(*http.Request){withOrigin(testBase), withJSON(`{"revision":1,"accountId":"github:1"}`)}},
-		{http.MethodGet, "/api/shares", nil},
-		{http.MethodPut, "/api/shares", []func(*http.Request){withOrigin(testBase), withJSON(`{"packId":"p"}`)}},
-		{http.MethodDelete, "/api/shares?pack=p", []func(*http.Request){withOrigin(testBase)}},
 	} {
 		response := h.do(c.method, c.path, append([]func(*http.Request){withCookie(before)}, c.change...)...)
 		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), "loginRequired") || !cleared(response) {

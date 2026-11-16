@@ -63,7 +63,7 @@ func TestMeasuredLeavesOtherRequestsAlone(t *testing.T) {
 	handler := New(Config{Store: meter, MeasureSaves: true})
 	for _, c := range [][2]string{
 		{http.MethodGet, "/api/workspace"}, {http.MethodHead, "/api/workspace"}, {http.MethodPost, "/api/workspace"},
-		{http.MethodGet, "/api/workspace/records"}, {http.MethodGet, "/api/shares"},
+		{http.MethodGet, "/api/workspace/records"}, {http.MethodGet, "/api/auth/session"},
 	} {
 		get(t, handler, c[0], c[1])
 	}
