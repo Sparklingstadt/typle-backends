@@ -191,8 +191,9 @@ func TestWithoutGitHubOnlySigninIsUnavailable(t *testing.T) {
 	if cookie == nil {
 		t.Fatalf("local login set no session: %v", local.Result().Cookies())
 	}
-	if response := do(http.MethodGet, "/api/workspace", cookie); response.Code != http.StatusOK {
-		t.Fatalf("workspace = %d %s", response.Code, response.Body)
+	// The session reads as signed in: the login works without GitHub.
+	if response := do(http.MethodGet, "/api/auth/session", cookie); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"user":{`) {
+		t.Fatalf("session = %d %s", response.Code, response.Body)
 	}
 }
 

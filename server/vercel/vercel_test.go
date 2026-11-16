@@ -77,9 +77,9 @@ func get(path string) *httptest.ResponseRecorder {
 	return response
 }
 
-// probe is a path of the database part: with the login settings and the database open, an anonymous request is refused
-// with loginRequired. (/api/health, /api/shared and the gallery's reads, which needed no login settings, are Next.js's.)
-const probe = "/api/workspace"
+// probe is a path of the database part: with the login settings and the database open, a request without the
+// administrator's cookie is refused with adminRequired. (/api/workspace, which it was before, is Next.js's now.)
+const probe = "/api/admin/dashboard"
 
 func serve(t *testing.T) *httptest.ResponseRecorder {
 	t.Helper()
@@ -106,14 +106,14 @@ func TestHandlerWithoutSecret(t *testing.T) {
 	expect(t, get("/api/auth/session"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 	expect(t, get("/api/auth/callback/github?code=x&state=y"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 	expect(t, get("/api/auth/callback/ffpf?code=x&state=y"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
-	expect(t, get("/api/workspace"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
+	expect(t, get("/api/admin/dashboard"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
 	if opened.Load() != 0 {
 		t.Fatal("the database was opened for a path that cannot be served without the login settings")
 	}
 
 	t.Setenv("AUTH_SECRET", "secret")
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
-	expect(t, get("/api/workspace"), http.StatusUnauthorized, `{"error":"loginRequired"}`)
+	expect(t, get("/api/admin/dashboard"), http.StatusUnauthorized, `{"error":"adminRequired"}`)
 	if opened.Load() != 1 {
 		t.Fatalf("the database was opened %d times", opened.Load())
 	}
@@ -134,12 +134,12 @@ func TestHandlerDatabaseDown(t *testing.T) {
 	settings(t)
 	backend.retryAfter = 0
 	backend.open = func(context.Context, string) (web.Store, error) { return nil, errors.New("connection refused") }
-	for _, path := range []string{probe, "/api/workspace"} {
+	for _, path := range []string{probe, "/api/admin/dashboard"} {
 		expect(t, get(path), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	}
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
-	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"adminRequired"}`)
 }
 
 // The auth paths never open the database: not when they are the first request, and not while it is down.
@@ -156,7 +156,7 @@ func TestAuthDoesNotOpenTheDatabase(t *testing.T) {
 	if opened.Load() != 0 {
 		t.Fatalf("the database was opened %d times for the auth paths", opened.Load())
 	}
-	get("/api/workspace")
+	get("/api/admin/dashboard")
 	if opened.Load() != 1 {
 		t.Fatalf("the database was opened %d times for the workspace", opened.Load())
 	}
@@ -233,7 +233,7 @@ func TestHandlerSessionWithUnreachableDatabase(t *testing.T) {
 	backend.ServeHTTP(response, request)
 	expect(t, response, http.StatusOK, `{"user":{"id":"github:1","name":"Octo","image":"https://avatars.test/1"},"providers":["github"]}`)
 
-	request = httptest.NewRequest(http.MethodGet, "/api/workspace", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/admin/dashboard", nil)
 	request.AddCookie(cookie)
 	response = httptest.NewRecorder()
 	backend.ServeHTTP(response, request)
@@ -250,7 +250,7 @@ func TestHandlerWithoutGitHub(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":[]}`)
 	expect(t, get("/api/auth/signin"), http.StatusServiceUnavailable, `{"error":"authUnavailable"}`)
-	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"adminRequired"}`)
 }
 
 // Once built, the auth handler is found without the lock, and without reading the environment again.
@@ -281,7 +281,7 @@ func TestHandlerWithoutDatabaseURL(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	t.Setenv("POSTGRES_URL", "postgresql://typle@db.invalid/typle")
-	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"adminRequired"}`)
 }
 
 // Many requests that arrive while the database is down share one connection attempt instead of queueing behind one
@@ -306,7 +306,7 @@ func TestHandlerConcurrentWhileDown(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			codes <- get("/api/workspace").Code
+			codes <- get("/api/admin/dashboard").Code
 		}()
 	}
 	<-started
@@ -364,7 +364,7 @@ func TestHandlerBackOff(t *testing.T) {
 	backend.open = func(context.Context, string) (web.Store, error) { return fakeStore{}, nil }
 	expect(t, get(probe), http.StatusServiceUnavailable, `{"error":"databaseUnavailable"}`)
 	moment = moment.Add(time.Second)
-	expect(t, get(probe), http.StatusUnauthorized, `{"error":"loginRequired"}`)
+	expect(t, get(probe), http.StatusUnauthorized, `{"error":"adminRequired"}`)
 }
 
 // Once built, the handler is kept and found without the lock or another connection.
@@ -373,7 +373,7 @@ func TestHandlerBuiltIsKept(t *testing.T) {
 	settings(t)
 	var attempts atomic.Int32
 	backend.open = func(context.Context, string) (web.Store, error) { attempts.Add(1); return fakeStore{}, nil }
-	expect(t, serve(t), http.StatusUnauthorized, `{"error":"loginRequired"}`)
+	expect(t, serve(t), http.StatusUnauthorized, `{"error":"adminRequired"}`)
 	first := backend.databaseHandler()
 
 	backend.mu.Lock()
@@ -403,7 +403,7 @@ func TestHandlerRealDatabase(t *testing.T) {
 	settings(t)
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("POSTGRES_URL", connection)
-	expect(t, serve(t), http.StatusUnauthorized, `{"error":"loginRequired"}`)
+	expect(t, serve(t), http.StatusUnauthorized, `{"error":"adminRequired"}`)
 	expect(t, get("/api/auth/session"), http.StatusOK, `{"user":null,"providers":["github"]}`)
 }
 

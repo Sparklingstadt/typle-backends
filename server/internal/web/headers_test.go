@@ -1,7 +1,6 @@
 package web
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -31,10 +30,10 @@ func TestSecurityHeaders(t *testing.T) {
 		name, method, target string
 		status               int
 	}{
-		{"workspace without login", http.MethodGet, "/api/workspace", http.StatusUnauthorized},
+		{"admin without login", http.MethodGet, "/api/admin/dashboard", http.StatusUnauthorized},
 		{"session", http.MethodGet, "/api/auth/session", http.StatusOK},
 		{"redirect", http.MethodGet, "/api/auth/signin?returnTo=" + url.QueryEscape("/lists"), http.StatusFound},
-		{"method not allowed", http.MethodDelete, "/api/workspace", http.StatusMethodNotAllowed},
+		{"method not allowed", http.MethodDelete, "/api/admin/dashboard", http.StatusMethodNotAllowed},
 		{"not found", http.MethodGet, "/nowhere", http.StatusNotFound},
 	}
 	for _, tc := range cases {
@@ -72,29 +71,5 @@ func TestJSONHeadersUniform(t *testing.T) {
 			header.Get("Vary") != "Cookie" {
 			t.Errorf("%s: %d %v", name, response.Code, header)
 		}
-	}
-}
-
-// HEAD /api/workspace is answered as GET, and a server leaves the body out.
-func TestWorkspaceHead(t *testing.T) {
-	h := newHarness(t, &fakeWorkspaces{}, testBase)
-	server := httptest.NewServer(h.handler)
-	defer server.Close()
-	request, err := http.NewRequest(http.MethodHead, server.URL+"/api/workspace", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.AddCookie(h.cookie(testOwner, false))
-	response, err := server.Client().Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, _ := io.ReadAll(response.Body)
-	if response.StatusCode != http.StatusOK || len(body) != 0 || response.Header.Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("response = %d %q %v", response.StatusCode, body, response.Header)
-	}
-	if signedOut := h.request(http.MethodHead, "", ""); signedOut.Code != http.StatusUnauthorized {
-		t.Fatalf("signed out: %d", signedOut.Code)
 	}
 }

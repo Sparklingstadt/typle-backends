@@ -2,20 +2,14 @@ package web
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/sparklingstadt/typle-r/server/internal/session"
 	"github.com/sparklingstadt/typle-r/server/internal/store"
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
@@ -73,34 +67,6 @@ func (f *fakeWorkspaces) WriteRevision(_ context.Context, _ string, revision int
 	return &store.Saved{Lists: lists, Packs: packs, Devices: devices, Interests: interests, Revision: revision + 1}, nil
 }
 
-// The database tests need the app's tables (npm run db:migrate). They use a random account and delete its row.
-func realStore(t *testing.T) (*store.Store, string) {
-	t.Helper()
-	connection := os.Getenv("TYPLE_TEST_DATABASE_URL")
-	if connection == "" {
-		t.Skip("set TYPLE_TEST_DATABASE_URL to a migrated test database")
-	}
-	ctx := context.Background()
-	s, err := store.OpenApp(ctx, connection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	conn, err := pgx.Connect(ctx, connection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	random := make([]byte, 8)
-	_, _ = rand.Read(random)
-	owner := fmt.Sprintf("github:%d", binary.BigEndian.Uint64(random)>>1)
-	t.Cleanup(func() {
-		_, _ = conn.Exec(ctx, `DELETE FROM typle_workspaces WHERE owner_id = $1`, owner)
-		_, _ = conn.Exec(ctx, `DELETE FROM typle_records WHERE owner_id = $1`, owner)
-		conn.Close(ctx)
-	})
-	return s, owner
-}
-
 type harness struct {
 	handler http.Handler
 	keys    session.Keys
@@ -126,36 +92,6 @@ func newHarness(t *testing.T, s Store, base string) *harness {
 
 func (h *harness) cookie(sub string, secure bool) *http.Cookie {
 	return &http.Cookie{Name: session.CookieName(secure), Value: h.keys.Seal(session.New(sub, "", "", time.Now()))}
-}
-
-// request is a signed-in PUT from the app's own origin unless the test changes it.
-func (h *harness) request(method, body string, owner string, change ...func(*http.Request)) *httptest.ResponseRecorder {
-	var reader io.Reader
-	if body != "" {
-		reader = strings.NewReader(body)
-	}
-	r := httptest.NewRequest(method, "/api/workspace", reader)
-	if method == http.MethodPut {
-		r.Header.Set("Origin", testBase)
-		r.Header.Set("Content-Type", "application/json")
-	}
-	if owner != "" {
-		r.AddCookie(h.cookie(owner, false))
-	}
-	for _, f := range change {
-		f(r)
-	}
-	response := httptest.NewRecorder()
-	h.handler.ServeHTTP(response, r)
-	return response
-}
-
-func (h *harness) get(owner string, change ...func(*http.Request)) *httptest.ResponseRecorder {
-	return h.request(http.MethodGet, "", owner, change...)
-}
-
-func (h *harness) put(owner, body string, change ...func(*http.Request)) *httptest.ResponseRecorder {
-	return h.request(http.MethodPut, body, owner, change...)
 }
 
 // payload is a request body of the account's, with the fields the test is about.

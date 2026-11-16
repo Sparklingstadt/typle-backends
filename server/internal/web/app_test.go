@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sparklingstadt/typle-r/server/internal/session"
-	"github.com/sparklingstadt/typle-r/server/internal/store"
 )
 
 // The iPad app's verifier and its S256 challenge (RFC 7636, appendix B).
@@ -252,87 +251,6 @@ func TestAppSessionNotRenewed(t *testing.T) {
 	}
 }
 
-func TestWorkspaceWithAppToken(t *testing.T) {
-	saved := &fakeWorkspaces{saved: &store.Saved{Lists: json.RawMessage("[]"), Devices: json.RawMessage("[]"), Revision: 3}}
-	h := newHarness(t, saved, "https://typle.test")
-	token := h.keys.SealApp(session.New(testOwner, "", "", time.Now()))
-	app := func(r *http.Request) {
-		r.Header.Del("Origin")
-		r.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	got := h.get("", app)
-	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"accountId":"`+testOwner+`"`) {
-		t.Fatalf("GET = %d %s", got.Code, got.Body)
-	}
-	// The app's requests have no Origin, and need none.
-	put := h.put("", payload(testOwner, `"revision":3,"lists":[`+aList("a", "A")+`]`), app)
-	if put.Code != http.StatusOK || saved.writes != 1 || saved.revision != 3 {
-		t.Fatalf("PUT = %d %s (writes %d)", put.Code, put.Body, saved.writes)
-	}
-
-	// A token is judged alone: a refused one is not saved by a cookie beside it, and the token's account is the one
-	// that must match.
-	refused := func(r *http.Request) {
-		r.Header.Del("Origin")
-		r.Header.Set("Authorization", "Bearer "+token+"x")
-	}
-	expectError(t, h.get(testOwner, refused), http.StatusUnauthorized, "loginRequired")
-	expectError(t, h.put(testOwner, payload(testOwner, `"revision":4`), refused), http.StatusUnauthorized, "loginRequired")
-	expectError(t, h.put("", payload("github:1", `"revision":4`), app), http.StatusUnauthorized, "loginAccountChanged")
-	// The Content-Type is still required, and a session cookie's value is not a token.
-	expectError(t, h.put("", payload(testOwner, `"revision":4`), app, func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") }),
-		http.StatusForbidden, "forbiddenRequest")
-	cookieAsToken := func(r *http.Request) {
-		r.Header.Del("Origin")
-		r.Header.Set("Authorization", "Bearer "+h.keys.Seal(session.New(testOwner, "", "", time.Now())))
-	}
-	expectError(t, h.get("", cookieAsToken), http.StatusUnauthorized, "loginRequired")
-	if saved.writes != 1 {
-		t.Fatalf("writes = %d", saved.writes)
-	}
-}
-
 func jsonString(raw json.RawMessage, into *string) error {
 	return json.Unmarshal(raw, into)
-}
-
-// The iPad app's requests go through the same checks and answers as the browser's: U+0000 and lone surrogates are
-// refused before the store, HEAD is answered as GET, the stored JSON is answered as it is, and the headers are the same.
-func TestWorkspaceWithAppTokenChecks(t *testing.T) {
-	stored := `[{"id":"a","name":"A","createdAt":"2026-09-06","words":[{"display":"a","input":"a","annotation":""}],"records":[],"extra":{"kept":true}}]`
-	fake := &fakeWorkspaces{saved: &store.Saved{Lists: json.RawMessage(stored), Devices: json.RawMessage("[]"), Revision: 3}}
-	h := newHarness(t, fake, "https://typle.test")
-	token := h.keys.SealApp(session.New(testOwner, "", "", time.Now()))
-	app := func(r *http.Request) {
-		r.Header.Del("Origin")
-		r.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	got := h.get("", app)
-	expectPrivate(t, got)
-	if got.Code != http.StatusOK || string(decodeBody(t, got)["lists"]) != stored {
-		t.Fatalf("GET = %d %s", got.Code, got.Body)
-	}
-	head := h.request(http.MethodHead, "", "", app)
-	expectPrivate(t, head)
-	if head.Code != http.StatusOK {
-		t.Fatalf("HEAD = %d", head.Code)
-	}
-	for name, fields := range map[string]string{
-		"NUL":            `"revision":3,"lists":[` + aList("one", `a\u0000b`) + `]`,
-		"lone surrogate": `"revision":3,"lists":[` + aList("one", `a\ud800b`) + `]`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			expectError(t, h.put("", payload(testOwner, fields), app), http.StatusBadRequest, "invalidWorkspace")
-		})
-	}
-	if fake.writes != 0 {
-		t.Fatalf("writes = %d", fake.writes)
-	}
-	put := h.put("", payload(testOwner, `"revision":3,"lists":[`+aList("one", "A")+`]`), app)
-	expectPrivate(t, put)
-	if put.Code != http.StatusOK || fake.writes != 1 {
-		t.Fatalf("PUT = %d %s (writes %d)", put.Code, put.Body, fake.writes)
-	}
 }

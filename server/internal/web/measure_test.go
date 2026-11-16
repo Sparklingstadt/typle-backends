@@ -41,7 +41,6 @@ func TestMeasuredSaves(t *testing.T) {
 	}
 	handler := New(Config{Store: meter, MeasureSaves: true, Now: clock})
 	cases := []struct{ method, path, operation string }{
-		{http.MethodPut, "/api/workspace", "workspace.write"},
 		{http.MethodPost, "/api/workspace/records", "record.add"},
 		{http.MethodDelete, "/api/workspace/records", "record.delete"},
 	}
@@ -62,7 +61,6 @@ func TestMeasuredLeavesOtherRequestsAlone(t *testing.T) {
 	meter := &meterStore{}
 	handler := New(Config{Store: meter, MeasureSaves: true})
 	for _, c := range [][2]string{
-		{http.MethodGet, "/api/workspace"}, {http.MethodHead, "/api/workspace"}, {http.MethodPost, "/api/workspace"},
 		{http.MethodGet, "/api/workspace/records"}, {http.MethodGet, "/api/auth/session"},
 	} {
 		get(t, handler, c[0], c[1])
@@ -74,9 +72,9 @@ func TestMeasuredLeavesOtherRequestsAlone(t *testing.T) {
 
 func TestMeasuredOnlyWhenTurnedOn(t *testing.T) {
 	meter := &meterStore{}
-	send(New(Config{Store: meter}), http.MethodPut, "/api/workspace", `{}`)
+	send(New(Config{Store: meter}), http.MethodPost, "/api/workspace/records", `{}`)
 	// A Store that cannot keep a measurement is served as before.
-	send(New(Config{Store: fakeStore{}, MeasureSaves: true}), http.MethodPut, "/api/workspace", `{}`)
+	send(New(Config{Store: fakeStore{}, MeasureSaves: true}), http.MethodPost, "/api/workspace/records", `{}`)
 	if len(meter.saves) != 0 {
 		t.Fatalf("measured %+v", meter.saves)
 	}
@@ -84,9 +82,9 @@ func TestMeasuredOnlyWhenTurnedOn(t *testing.T) {
 
 // A measurement that cannot be kept does not change the answer.
 func TestMeasuredFailureKeepsTheAnswer(t *testing.T) {
-	plain := send(New(Config{Store: fakeStore{}}), http.MethodPut, "/api/workspace", `{}`)
+	plain := send(New(Config{Store: fakeStore{}}), http.MethodPost, "/api/workspace/records", `{}`)
 	meter := &meterStore{fail: errors.New("down")}
-	measured := send(New(Config{Store: meter, MeasureSaves: true}), http.MethodPut, "/api/workspace", `{}`)
+	measured := send(New(Config{Store: meter, MeasureSaves: true}), http.MethodPost, "/api/workspace/records", `{}`)
 	if measured.Code != plain.Code || measured.Body.String() != plain.Body.String() || len(meter.saves) != 1 {
 		t.Fatalf("answered %d %s, want %d %s; %d saves measured", measured.Code, measured.Body, plain.Code, plain.Body, len(meter.saves))
 	}

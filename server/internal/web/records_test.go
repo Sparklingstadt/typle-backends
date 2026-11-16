@@ -188,39 +188,6 @@ func TestAddRecordRefused(t *testing.T) {
 	})
 }
 
-// A run is saved however the lists were changed meanwhile, and a list edit made against the revision from before the
-// run is told to reload (409) instead of saving the lists without it.
-func TestAddRecordWithEditsDatabase(t *testing.T) {
-	s, owner := realStore(t)
-	h := newHarness(t, s, testBase)
-	created := h.put(owner, payload(owner, `"revision":0,"lists":[`+oneList+`],"devices":[{"id":"mac","name":"MacBook","layout":"JIS"}]`))
-	if created.Code != http.StatusOK {
-		t.Fatalf("created = %d %s", created.Code, created.Body)
-	}
-	// Another screen renames the list after the practice started from revision 1.
-	renamed := h.put(owner, payload(owner, `"revision":1,"lists":[`+strings.Replace(oneList, `"One"`, `"Renamed"`, 1)+`]`))
-	if renamed.Code != http.StatusOK {
-		t.Fatalf("renamed = %d %s", renamed.Code, renamed.Body)
-	}
-	added := h.postRecord(owner, recordBody(owner, "one", aRun))
-	if added.Code != http.StatusCreated || string(decodeBody(t, added)["revision"]) != "3" {
-		t.Fatalf("added = %d %s", added.Code, added.Body)
-	}
-	again := h.postRecord(owner, recordBody(owner, "one", aRun))
-	if again.Code != http.StatusOK || len(savedRecords(t, again, "one")) != 1 {
-		t.Fatalf("again = %d %s", again.Code, again.Body)
-	}
-	// The screen that renamed it still holds revision 2: its next edit would drop the run, so it must reload.
-	expectError(t, h.put(owner, payload(owner, `"revision":2,"lists":[`+oneList+`]`)), http.StatusConflict, "conflict")
-	read := h.get(owner)
-	records := savedRecords(t, read, "one")
-	var lists []struct{ Name string }
-	_ = json.Unmarshal(decodeBody(t, read)["lists"], &lists)
-	if len(records) != 1 || records[0].Device == nil || len(lists) != 1 || lists[0].Name != "Renamed" {
-		t.Fatalf("read = %s", read.Body)
-	}
-}
-
 func deleteBody(owner, listID, recordID string) string {
 	return payload(owner, `"listId":"`+listID+`","recordId":"`+recordID+`"`)
 }
@@ -259,38 +226,6 @@ func TestDeleteRecord(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) { expectError(t, h.deleteRecord(testOwner, c.body), c.status, c.key) })
 	}
-}
-
-// A record is deleted without a revision, so the lists changed meanwhile stay, and an edit made before the delete is
-// told to reload rather than bring the record back.
-func TestDeleteRecordWithEditsDatabase(t *testing.T) {
-	s, owner := realStore(t)
-	h := newHarness(t, s, testBase)
-	created := h.put(owner, payload(owner, `"revision":0,"lists":[`+oneList+`],"devices":[{"id":"mac","name":"MacBook","layout":"JIS"}]`))
-	if created.Code != http.StatusOK {
-		t.Fatalf("created = %d %s", created.Code, created.Body)
-	}
-	added := h.postRecord(owner, recordBody(owner, "one", aRun))
-	if added.Code != http.StatusCreated {
-		t.Fatalf("added = %d %s", added.Code, added.Body)
-	}
-	// Another screen renames the list, with its record, at the revision the record was saved in.
-	lists := strings.Replace(string(decodeBody(t, added)["lists"]), `"One"`, `"Renamed"`, 1)
-	renamed := h.put(owner, payload(owner, `"revision":2,"lists":`+lists))
-	if renamed.Code != http.StatusOK || len(savedRecords(t, renamed, "one")) != 1 {
-		t.Fatalf("renamed = %d %s", renamed.Code, renamed.Body)
-	}
-	deleted := h.deleteRecord(owner, deleteBody(owner, "one", "run-1"))
-	if deleted.Code != http.StatusOK || len(savedRecords(t, deleted, "one")) != 0 {
-		t.Fatalf("deleted = %d %s", deleted.Code, deleted.Body)
-	}
-	var names []struct{ Name string }
-	_ = json.Unmarshal(decodeBody(t, deleted)["lists"], &names)
-	if len(names) != 1 || names[0].Name != "Renamed" {
-		t.Fatalf("lists = %s", deleted.Body)
-	}
-	// The renaming screen still holds revision 3, with the record: its next save would bring it back, so it must reload.
-	expectError(t, h.put(owner, payload(owner, `"revision":3,"lists":`+lists)), http.StatusConflict, "conflict")
 }
 
 // A change the store refuses because the workspace would grow past its limit (workspace.CheckSize) is answered 413, for a
@@ -472,22 +407,10 @@ func TestRecordModeIsKept(t *testing.T) {
 	if added.Code != http.StatusCreated {
 		t.Fatalf("response = %d %s", added.Code, added.Body)
 	}
-	if records := savedRecords(t, h.get(testOwner), "one"); len(records) != 1 || records[0].Mode != "recall" {
+	// The answer is the workspace as now saved (GET /api/workspace is Next.js's now).
+	if records := savedRecords(t, added, "one"); len(records) != 1 || records[0].Mode != "recall" {
 		t.Fatalf("records = %+v", records)
 	}
 	bad := strings.Replace(strings.Replace(recall, `"recall"`, `"x"`, 1), `"run-1"`, `"run-2"`, 1)
 	expectError(t, h.postRecord(testOwner, recordBody(testOwner, "one", bad)), http.StatusBadRequest, "invalidRecord")
-}
-
-func TestPutKeepsRecordMode(t *testing.T) {
-	saved := &fakeWorkspaces{saved: &store.Saved{Lists: json.RawMessage("[]"), Devices: json.RawMessage("[]"), Revision: 1}}
-	h := newHarness(t, saved, testBase)
-	list := strings.Replace(oneList, `"records":[]`, `"records":[{"id":"r1","time":1,"date":"2026-10-02T10:00:00.000Z","mode":"recall"}]`, 1)
-	put := h.put(testOwner, payload(testOwner, `"revision":1,"lists":[`+list+`]`))
-	if put.Code != http.StatusOK {
-		t.Fatalf("PUT = %d %s", put.Code, put.Body)
-	}
-	if records := savedRecords(t, put, "one"); len(records) != 1 || records[0].Mode != "recall" || records[0].Extra != "" {
-		t.Fatalf("records = %+v", records)
-	}
 }

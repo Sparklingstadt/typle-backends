@@ -79,8 +79,8 @@ func TestRevokedSessionIsRefused(t *testing.T) {
 		method, path string
 		change       []func(*http.Request)
 	}{
-		{http.MethodGet, "/api/workspace", nil},
-		{http.MethodPut, "/api/workspace", []func(*http.Request){withOrigin(testBase), withJSON(`{"revision":1,"accountId":"github:1"}`)}},
+		{http.MethodPost, "/api/workspace/records", []func(*http.Request){withOrigin(testBase), withJSON(`{"accountId":"github:1"}`)}},
+		{http.MethodDelete, "/api/workspace/records", []func(*http.Request){withOrigin(testBase), withJSON(`{"accountId":"github:1"}`)}},
 	} {
 		response := h.do(c.method, c.path, append([]func(*http.Request){withCookie(before)}, c.change...)...)
 		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), "loginRequired") || !cleared(response) {
@@ -90,11 +90,12 @@ func TestRevokedSessionIsRefused(t *testing.T) {
 	if r.reads != 0 || r.writes != 0 {
 		t.Fatalf("a revoked session reached the data: %d reads, %d writes", r.reads, r.writes)
 	}
-	if response := h.do(http.MethodGet, "/api/workspace", withCookie(after)); response.Code != http.StatusOK || cleared(response) {
+	// A login since is signed in (/api/workspace, which showed it before, is Next.js's now).
+	if response := h.do(http.MethodGet, "/api/auth/session", withCookie(after)); !strings.Contains(response.Body.String(), `"id":"github:1"`) || cleared(response) {
 		t.Fatalf("a login since the revocation = %d %s", response.Code, response.Body)
 	}
 	// Another account's revocation is not this one's.
-	if response := h.do(http.MethodGet, "/api/workspace", withCookie(h.sessionCookie("github:2", h.now.Add(-time.Hour)))); response.Code != http.StatusOK {
+	if response := h.do(http.MethodGet, "/api/auth/session", withCookie(h.sessionCookie("github:2", h.now.Add(-time.Hour)))); !strings.Contains(response.Body.String(), `"id":"github:2"`) {
 		t.Fatalf("another account = %d %s", response.Code, response.Body)
 	}
 }
@@ -105,9 +106,9 @@ func TestRevokedAppTokenIsRefused(t *testing.T) {
 	h := newRevocationHarness(t, r)
 	token := h.keys.SealApp(session.New("github:1", "A", "", h.now.Add(-time.Hour)))
 	r.revokedAt["github:1"] = h.now.Add(-time.Minute)
-	response := h.do(http.MethodGet, "/api/workspace", bearer(token))
+	response := h.do(http.MethodPost, "/api/workspace/records", bearer(token), withJSON(`{"accountId":"github:1"}`))
 	if response.Code != http.StatusUnauthorized || len(response.Result().Cookies()) != 0 {
-		t.Fatalf("workspace = %d %s %v", response.Code, response.Body, response.Result().Cookies())
+		t.Fatalf("records = %d %s %v", response.Code, response.Body, response.Result().Cookies())
 	}
 	if got := h.do(http.MethodGet, "/api/auth/session", bearer(token)); !strings.Contains(got.Body.String(), `"user":null`) {
 		t.Fatalf("session = %s", got.Body)
@@ -118,9 +119,9 @@ func TestRevokedAppTokenIsRefused(t *testing.T) {
 func TestRevocationsUnreadable(t *testing.T) {
 	r := &revocations{readErr: errors.New("down")}
 	h := newRevocationHarness(t, r)
-	response := h.do(http.MethodGet, "/api/workspace", withCookie(h.sessionCookie("github:1", h.now)))
+	response := h.do(http.MethodPost, "/api/workspace/records", withCookie(h.sessionCookie("github:1", h.now)), withOrigin(testBase), withJSON(`{"accountId":"github:1"}`))
 	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "databaseUnavailable") || cleared(response) {
-		t.Fatalf("workspace = %d %s", response.Code, response.Body)
+		t.Fatalf("records = %d %s", response.Code, response.Body)
 	}
 	if r.reads != 0 || len(h.reports) != 1 || h.reports[0] != "session.check" {
 		t.Fatalf("reads = %d, reports = %v", r.reads, h.reports)
@@ -177,10 +178,10 @@ func TestSignoutEverywhere(t *testing.T) {
 		}
 		// The cookie it signed out with, and any other of a login until now, no longer reaches the data.
 		h.now = h.now.Add(time.Second)
-		if got := h.do(http.MethodGet, "/api/workspace", withCookie(cookie)); got.Code != http.StatusUnauthorized {
-			t.Fatalf("workspace after signing out everywhere = %d", got.Code)
+		if got := h.do(http.MethodPost, "/api/workspace/records", withCookie(cookie), withOrigin(testBase), withJSON(`{"accountId":"github:1"}`)); got.Code != http.StatusUnauthorized {
+			t.Fatalf("records after signing out everywhere = %d", got.Code)
 		}
-		if got := h.do(http.MethodGet, "/api/workspace", withCookie(h.sessionCookie("github:1", h.now))); got.Code != http.StatusOK {
+		if got := h.do(http.MethodGet, "/api/auth/session", withCookie(h.sessionCookie("github:1", h.now))); !strings.Contains(got.Body.String(), `"id":"github:1"`) {
 			t.Fatalf("a new login = %d %s", got.Code, got.Body)
 		}
 	})
