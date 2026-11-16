@@ -30,10 +30,10 @@ func TestSecurityHeaders(t *testing.T) {
 		name, method, target string
 		status               int
 	}{
-		{"admin without login", http.MethodGet, "/api/admin/dashboard", http.StatusUnauthorized},
+		{"forbidden", http.MethodPost, "/api/auth/admin/signout", http.StatusForbidden},
 		{"session", http.MethodGet, "/api/auth/session", http.StatusOK},
 		{"redirect", http.MethodGet, "/api/auth/signin?returnTo=" + url.QueryEscape("/lists"), http.StatusFound},
-		{"method not allowed", http.MethodDelete, "/api/admin/dashboard", http.StatusMethodNotAllowed},
+		{"method not allowed", http.MethodDelete, "/api/auth/admin/signout", http.StatusMethodNotAllowed},
 		{"not found", http.MethodGet, "/nowhere", http.StatusNotFound},
 	}
 	for _, tc := range cases {

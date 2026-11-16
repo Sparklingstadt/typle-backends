@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sparklingstadt/typle-r/server/internal/store"
 	"github.com/sparklingstadt/typle-r/server/internal/workspace"
 )
 
@@ -35,15 +34,7 @@ func TestNotFound(t *testing.T) {
 	}
 }
 
-func (f fakeStore) AdminGallery(context.Context) ([]store.AdminGalleryPack, error) { return nil, f.err }
-
-func (f fakeStore) SetHidden(context.Context, string, bool) (bool, error) { return false, f.err }
-
 func (f fakeStore) Admin(context.Context, string, string) (bool, error) { return false, f.err }
-
-func (f fakeStore) Overview(context.Context) (*store.AdminOverview, error) { return nil, f.err }
-
-func (f fakeStore) Users(context.Context, int) (*store.AdminUsers, error) { return nil, f.err }
 
 // No account has signed out of every device, whatever err is, so that a test of another failure fails where it means
 // to; revocations_test.go has its own store for them.

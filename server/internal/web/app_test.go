@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -155,7 +156,7 @@ func TestAppLoginFails(t *testing.T) {
 		"cancelled":   func(_ *loginHarness, state string) string { return "error=access_denied&state=" + state },
 		"wrong state": func(*loginHarness, string) string { return "code=c&state=other" },
 		"exchange": func(h *loginHarness, state string) string {
-			h.oauth.err = errTooLarge
+			h.oauth.err = errors.New("exchange failed")
 			return "code=c&state=" + state
 		},
 	} {

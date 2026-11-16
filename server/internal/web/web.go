@@ -11,17 +11,12 @@ import (
 
 	"github.com/sparklingstadt/typle-r/server/internal/auth"
 	"github.com/sparklingstadt/typle-r/server/internal/session"
-	"github.com/sparklingstadt/typle-r/server/internal/store"
 )
 
 // Store is what the handlers need of the database.
 type Store interface {
 	Ping(ctx context.Context) error
-	AdminGallery(ctx context.Context) ([]store.AdminGalleryPack, error)
-	SetHidden(ctx context.Context, id string, hidden bool) (bool, error)
 	Admin(ctx context.Context, email, sub string) (bool, error)
-	Overview(ctx context.Context) (*store.AdminOverview, error)
-	Users(ctx context.Context, page int) (*store.AdminUsers, error)
 	SessionSource
 }
 
@@ -102,11 +97,6 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("/api/auth/signout", s.signout)
 	mux.HandleFunc("/api/auth/local", s.localLogin)
 	mux.HandleFunc("/api/auth/admin/signout", s.adminSignout)
-	mux.HandleFunc("/api/admin/dashboard", s.adminDashboard)
-	mux.HandleFunc("/api/admin/users", s.adminUsers)
-	mux.HandleFunc("/api/admin/gallery", s.adminGallery)
-	mux.HandleFunc("/api/admin/gallery/hide", s.adminHide)
-	mux.HandleFunc("/api/admin/gallery/unhide", s.adminUnhide)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { refuse(w, http.StatusNotFound, "notFound") })
 	return withSecurityHeaders(mux)
 }

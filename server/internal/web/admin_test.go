@@ -2,9 +2,7 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,7 +12,6 @@ import (
 
 	"github.com/sparklingstadt/typle-r/server/internal/auth"
 	"github.com/sparklingstadt/typle-r/server/internal/session"
-	"github.com/sparklingstadt/typle-r/server/internal/store"
 )
 
 // adminStore is a database with typle_admins: allowed answers Admin, and it remembers what it was asked.
@@ -25,17 +22,12 @@ type adminStore struct {
 	checks   int
 	email    string
 	sub      string
-	overview *store.AdminOverview
 }
 
 func (a *adminStore) Admin(_ context.Context, email, sub string) (bool, error) {
 	a.checks++
 	a.email, a.sub = email, sub
 	return a.allowed, a.checkErr
-}
-
-func (a *adminStore) Overview(context.Context) (*store.AdminOverview, error) {
-	return a.overview, a.err
 }
 
 // newAdminHarness is newLoginHarness with the administrator's FFPF ID account and the store a.
@@ -61,10 +53,6 @@ func (h *loginHarness) adminSignin(t *testing.T, query string) *http.Cookie {
 		t.Fatalf("signin = %d %v", response.Code, response.Header())
 	}
 	return &http.Cookie{Name: cookie.Name, Value: cookie.Value}
-}
-
-func (h *loginHarness) adminCookie(email, sub string) *http.Cookie {
-	return &http.Cookie{Name: session.AdminCookieName(h.secure), Value: h.keys.SealAdmin(session.NewAdmin(email, sub, h.now))}
 }
 
 // onlyOAuthCookie fails unless the response set no cookie but the spent OAuth cookie.
@@ -223,75 +211,6 @@ func TestAdminCallbackNotThroughGitHub(t *testing.T) {
 	}
 }
 
-func TestAdminDashboard(t *testing.T) {
-	overview := &store.AdminOverview{Workspaces: 3, ActiveWeek: 2, SharedPacks: 1,
-		RecentShares: []store.AdminShare{}, Admins: []store.AdminAccount{}}
-	a := &adminStore{allowed: true, overview: overview}
-	h := newAdminHarness(t, testBase, a)
-	response := h.do(http.MethodGet, "/api/admin/dashboard", withCookie(h.adminCookie("admin@example.com", "cadmin")))
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("dashboard = %d %v %s", response.Code, response.Header(), response.Body)
-	}
-	var body struct {
-		Admin    adminUser           `json:"admin"`
-		Overview store.AdminOverview `json:"overview"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Admin != (adminUser{"admin@example.com", "cadmin"}) || body.Overview.Workspaces != 3 || body.Overview.SharedPacks != 1 ||
-		!strings.Contains(response.Body.String(), `"admin":{"email":"admin@example.com","sub":"cadmin"}`) {
-		t.Fatalf("body = %s", response.Body)
-	}
-	if a.email != "admin@example.com" || a.sub != "cadmin" {
-		t.Fatalf("checked %q %q", a.email, a.sub)
-	}
-}
-
-func TestAdminDashboardRefuses(t *testing.T) {
-	a := &adminStore{allowed: true, overview: &store.AdminOverview{}}
-	h := newAdminHarness(t, testBase, a)
-	sessionCookie := &http.Cookie{Name: h.sessionCookieName(), Value: h.keys.Seal(session.New("github:7", "x", "", h.now))}
-	expired := h.adminCookie("admin@example.com", "cadmin")
-	expired.Value = h.keys.SealAdmin(session.NewAdmin("admin@example.com", "cadmin", h.now.Add(-session.AdminMaxAge)))
-	for name, cookie := range map[string]*http.Cookie{
-		"no cookie":      nil,
-		"session cookie": sessionCookie,
-		"expired":        expired,
-		"invalid sub":    h.adminCookie("admin@example.com", "Not-A-Sub"),
-		"no email":       h.adminCookie("", "cadmin"),
-		"forged":         {Name: session.AdminCookieName(false), Value: strings.Replace(h.adminCookie("x@example.com", "c1").Value, ".", "x.", 1)},
-	} {
-		var change []func(*http.Request)
-		if cookie != nil {
-			change = append(change, withCookie(cookie))
-		}
-		expectError(t, h.do(http.MethodGet, "/api/admin/dashboard", change...), http.StatusUnauthorized, "adminRequired")
-		if a.checks != 0 {
-			t.Fatalf("%s: the database was asked", name)
-		}
-	}
-
-	// An account typle_admins does not let in loses its cookie.
-	a.allowed = false
-	response := h.do(http.MethodGet, "/api/admin/dashboard", withCookie(h.adminCookie("admin@example.com", "cother")))
-	expectError(t, response, http.StatusForbidden, "adminForbidden")
-	if c := findCookie(response, session.AdminCookieName(false)); c == nil || c.MaxAge >= 0 {
-		t.Fatalf("cookie = %+v", c)
-	}
-
-	a.allowed, a.checkErr = false, errors.New("down")
-	expectError(t, h.do(http.MethodGet, "/api/admin/dashboard", withCookie(h.adminCookie("admin@example.com", "cadmin"))),
-		http.StatusServiceUnavailable, "databaseUnavailable")
-	a.allowed, a.checkErr, a.err = true, nil, errors.New("down")
-	expectError(t, h.do(http.MethodGet, "/api/admin/dashboard", withCookie(h.adminCookie("admin@example.com", "cadmin"))),
-		http.StatusServiceUnavailable, "databaseUnavailable")
-	if strings.Join(h.reports, ",") != "admin.check,admin.overview" {
-		t.Fatalf("reports = %v", h.reports)
-	}
-	expectError(t, h.do(http.MethodPost, "/api/admin/dashboard"), http.StatusMethodNotAllowed, "methodNotAllowed")
-}
-
 func TestAdminSignout(t *testing.T) {
 	h := newAdminHarness(t, testBase, &adminStore{})
 	expectError(t, h.do(http.MethodPost, "/api/auth/admin/signout"), http.StatusForbidden, "forbiddenRequest")
@@ -305,166 +224,3 @@ func TestAdminSignout(t *testing.T) {
 		t.Fatalf("relogin cookie = %+v", relogin)
 	}
 }
-
-// usersStore answers the user list and remembers the page it was asked for.
-type usersStore struct {
-	adminStore
-	page  int
-	users *store.AdminUsers
-}
-
-func (u *usersStore) Users(_ context.Context, page int) (*store.AdminUsers, error) {
-	u.page = page
-	return u.users, u.err
-}
-
-func TestAdminUsers(t *testing.T) {
-	u := &usersStore{adminStore: adminStore{allowed: true}, page: -1, users: &store.AdminUsers{Total: 51,
-		Users: []store.AdminUser{{OwnerID: "github:42", Lists: 3, Shares: 1, Revision: 2, UpdatedAt: time.Unix(1700000000, 0).UTC()}}}}
-	h := newLoginHarness(t, testBase, false)
-	parsed, _ := url.Parse(testBase)
-	h.handler = New(Config{Store: u, Keys: h.keys, BaseURL: parsed, Now: func() time.Time { return h.now },
-		Report: func(_ *http.Request, err error, operation string) { h.reports = append(h.reports, operation) }})
-	admin := withCookie(h.adminCookie("admin@example.com", "cadmin"))
-
-	response := h.do(http.MethodGet, "/api/admin/users?page=1", admin)
-	want := `{"page":1,"pageSize":50,"total":51,"users":[{"ownerId":"github:42","lists":3,"packs":0,"devices":0,"shares":1,` +
-		`"revision":2,"updatedAt":"2023-11-14T22:13:20Z"}]}`
-	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != want || u.page != 1 {
-		t.Fatalf("users = %d %s (page %d)", response.Code, response.Body, u.page)
-	}
-	if h.do(http.MethodGet, "/api/admin/users", admin); u.page != 0 {
-		t.Fatalf("no page asked for page %d", u.page)
-	}
-	for _, page := range []string{"-1", "x", "1.5", "10001"} {
-		u.page = -1
-		expectError(t, h.do(http.MethodGet, "/api/admin/users?page="+page, admin), http.StatusBadRequest, "invalidPage")
-		if u.page != -1 {
-			t.Fatalf("page %s reached the database", page)
-		}
-	}
-	// The list is the administrator's alone.
-	expectError(t, h.do(http.MethodGet, "/api/admin/users"), http.StatusUnauthorized, "adminRequired")
-	u.allowed = false
-	expectError(t, h.do(http.MethodGet, "/api/admin/users", admin), http.StatusForbidden, "adminForbidden")
-	u.allowed, u.err = true, errors.New("down")
-	expectError(t, h.do(http.MethodGet, "/api/admin/users", admin), http.StatusServiceUnavailable, "databaseUnavailable")
-	if strings.Join(h.reports, ",") != "admin.users" {
-		t.Fatalf("reports = %v", h.reports)
-	}
-}
-
-// moderationStore answers the administrator's gallery calls and remembers what it was asked.
-type moderationStore struct {
-	adminStore
-	packs  []store.AdminGalleryPack
-	found  bool
-	hidden []string
-	set    []bool
-}
-
-func (m *moderationStore) AdminGallery(context.Context) ([]store.AdminGalleryPack, error) {
-	return m.packs, m.err
-}
-
-func (m *moderationStore) SetHidden(_ context.Context, id string, hidden bool) (bool, error) {
-	m.hidden = append(m.hidden, id)
-	m.set = append(m.set, hidden)
-	return m.found, m.err
-}
-
-func newModerationHarness(t *testing.T, m *moderationStore) *loginHarness {
-	t.Helper()
-	h := newLoginHarness(t, testBase, false)
-	parsed, _ := url.Parse(testBase)
-	h.handler = New(Config{Store: m, Keys: h.keys, BaseURL: parsed, Now: func() time.Time { return h.now },
-		Report: func(_ *http.Request, err error, operation string) { h.reports = append(h.reports, operation) }})
-	return h
-}
-
-var galleryPaths = []struct{ method, path string }{
-	{http.MethodGet, "/api/admin/gallery"},
-	{http.MethodPost, "/api/admin/gallery/hide"},
-	{http.MethodPost, "/api/admin/gallery/unhide"},
-}
-
-func TestAdminGalleryRefused(t *testing.T) {
-	m := &moderationStore{adminStore: adminStore{allowed: true}, found: true}
-	h := newModerationHarness(t, m)
-	body := strings.NewReader(`{"id":"` + aSharedID + `"}`)
-	for _, p := range galleryPaths {
-		do := func(change ...func(*http.Request)) *httptest.ResponseRecorder {
-			change = append([]func(*http.Request){withOrigin(testBase), func(r *http.Request) {
-				r.Header.Set("Content-Type", "application/json")
-				body.Seek(0, 0)
-				r.Body = io.NopCloser(body)
-			}}, change...)
-			return h.do(p.method, p.path, change...)
-		}
-		expectError(t, do(), http.StatusUnauthorized, "adminRequired")
-		m.allowed = false
-		expectError(t, do(withCookie(h.adminCookie("admin@example.com", "cother"))), http.StatusForbidden, "adminForbidden")
-		m.allowed = true
-		if len(m.hidden) != 0 {
-			t.Fatalf("%s reached the database: %v", p.path, m.hidden)
-		}
-	}
-}
-
-func TestAdminGallery(t *testing.T) {
-	listed := time.Unix(1700000000, 0).UTC()
-	m := &moderationStore{adminStore: adminStore{allowed: true}, found: true, packs: []store.AdminGalleryPack{
-		{ID: aSharedID, Name: "N", Added: 2, ListedAt: &listed, Reports: 3, Reasons: map[string]int{"spam": 3}}}}
-	h := newModerationHarness(t, m)
-	admin := withCookie(h.adminCookie("admin@example.com", "cadmin"))
-
-	response := h.do(http.MethodGet, "/api/admin/gallery", admin)
-	want := `{"packs":[{"id":"` + aSharedID + `","name":"N","added":2,"listedAt":"2023-11-14T22:13:20Z","hiddenAt":null,` +
-		`"reports":3,"reasons":{"spam":3}}]}`
-	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != want {
-		t.Fatalf("gallery = %d %s", response.Code, response.Body)
-	}
-	m.packs = nil
-	if empty := h.do(http.MethodGet, "/api/admin/gallery", admin); strings.TrimSpace(empty.Body.String()) != `{"packs":[]}` {
-		t.Fatalf("empty = %s", empty.Body)
-	}
-	expectError(t, h.do(http.MethodPost, "/api/admin/gallery", admin), http.StatusMethodNotAllowed, "methodNotAllowed")
-	expectError(t, h.do(http.MethodGet, "/api/admin/gallery/hide", admin), http.StatusMethodNotAllowed, "methodNotAllowed")
-
-	json := func(change ...func(*http.Request)) []func(*http.Request) {
-		return append([]func(*http.Request){admin, withOrigin(testBase), func(r *http.Request) { r.Header.Set("Content-Type", "application/json") }}, change...)
-	}
-	post := func(path, body string, change ...func(*http.Request)) *httptest.ResponseRecorder {
-		return h.do(http.MethodPost, path, append(json(change...), func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(body)) })...)
-	}
-	good := `{"id":"` + aSharedID + `"}`
-	for path, hide := range map[string]bool{"/api/admin/gallery/hide": true, "/api/admin/gallery/unhide": false} {
-		m.hidden, m.set = nil, nil
-		response := post(path, good)
-		if response.Code != http.StatusNoContent || response.Body.Len() != 0 || len(m.hidden) != 1 || m.hidden[0] != aSharedID || m.set[0] != hide {
-			t.Fatalf("%s = %d %s %v %v", path, response.Code, response.Body, m.hidden, m.set)
-		}
-		for _, body := range []string{``, `x`, `[]`, `{}`, `{"id":""}`, `{"id":null}`, `{"id":1}`, `{"id":"` + aSharedID + `","x":1}`} {
-			expectError(t, post(path, body), http.StatusBadRequest, "invalidRequest")
-		}
-		expectError(t, post(path, good, withOrigin("https://evil.example")), http.StatusForbidden, "forbiddenRequest")
-		expectError(t, post(path, good, func(r *http.Request) { r.Header.Del("Origin") }), http.StatusForbidden, "forbiddenRequest")
-		expectError(t, post(path, good, func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") }), http.StatusForbidden, "forbiddenRequest")
-		if len(m.hidden) != 1 {
-			t.Fatalf("%s: a refused request reached the database: %v", path, m.hidden)
-		}
-		m.found = false
-		expectError(t, post(path, good), http.StatusNotFound, "sharedPackNotFound")
-		m.found = true
-	}
-
-	m.err = errors.New("down")
-	expectError(t, h.do(http.MethodGet, "/api/admin/gallery", admin), http.StatusServiceUnavailable, "databaseUnavailable")
-	expectError(t, post("/api/admin/gallery/hide", good), http.StatusServiceUnavailable, "databaseUnavailable")
-	if got := strings.Join(h.reports, ","); !strings.Contains(got, "admin.gallery,") || !strings.Contains(got, "admin.hide") {
-		t.Fatalf("reports = %v", h.reports)
-	}
-}
-
-// aSharedID is a link id as the links are written.
-const aSharedID = "0b6f2c1e-3d4a-4f5b-8c9d-0e1f2a3b4c5d"
