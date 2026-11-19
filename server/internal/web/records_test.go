@@ -1,0 +1,490 @@
+package web
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/sparklingstadt/typle-r/server/internal/store"
+	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+)
+
+// memoryWorkspace is a database of one account's workspace, changed with Modify as store.Store does.
+type memoryWorkspace struct {
+	fakeStore
+	w        *workspace.Workspace
+	revision int
+	modifies int
+}
+
+func newMemoryWorkspace(t *testing.T, lists string) *memoryWorkspace {
+	t.Helper()
+	w, err := workspace.Decode([]byte(lists), []byte(`[{"id":"mac","name":"MacBook","layout":"JIS"}]`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &memoryWorkspace{w: w, revision: 1}
+}
+
+func (m *memoryWorkspace) Modify(_ context.Context, _ string, change func(*workspace.Workspace) (bool, error)) (*workspace.Workspace, error) {
+	m.modifies++
+	if m.err != nil {
+		return nil, m.err
+	}
+	changed, err := change(m.w)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		m.revision++
+	}
+	return m.w, nil
+}
+
+func (m *memoryWorkspace) ReadRevision(context.Context, string) (*store.Saved, error) {
+	lists, err := workspace.Encode(m.w.Lists)
+	if err != nil {
+		return nil, err
+	}
+	packs, err := workspace.EncodePacks(m.w.Packs)
+	if err != nil {
+		return nil, err
+	}
+	devices, err := workspace.EncodeDevices(m.w.Devices)
+	if err != nil {
+		return nil, err
+	}
+	return &store.Saved{Lists: lists, Packs: packs, Devices: devices, Revision: m.revision}, nil
+}
+
+// postRecord is a signed-in POST /api/workspace/records from the app's own origin unless the test changes it.
+// An empty body is none at all.
+func (h *harness) postRecord(owner, body string, change ...func(*http.Request)) *httptest.ResponseRecorder {
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/workspace/records", reader)
+	r.Header.Set("Origin", testBase)
+	r.Header.Set("Content-Type", "application/json")
+	if owner != "" {
+		r.AddCookie(h.cookie(owner, false))
+	}
+	for _, f := range change {
+		f(r)
+	}
+	response := httptest.NewRecorder()
+	h.handler.ServeHTTP(response, r)
+	return response
+}
+
+const aRun = `{"id":"run-1","time":2.5,"date":"2026-10-02T10:00:00.000Z","mistakes":1,"accuracy":95.5,"wordCount":1,"deviceId":"mac"}`
+
+func recordBody(owner, listID, record string) string {
+	return payload(owner, `"listId":"`+listID+`","record":`+record)
+}
+
+// savedRecords are the records of the list in an answer that has the workspace.
+func savedRecords(t *testing.T, response *httptest.ResponseRecorder, listID string) []workspace.Record {
+	t.Helper()
+	var lists []workspace.List
+	if err := json.Unmarshal(decodeBody(t, response)["lists"], &lists); err != nil {
+		t.Fatal(err)
+	}
+	for _, list := range lists {
+		if list.ID == listID {
+			return list.Records
+		}
+	}
+	t.Fatalf("no list %s in %s", listID, response.Body)
+	return nil
+}
+
+func TestAddRecord(t *testing.T) {
+	memory := newMemoryWorkspace(t, `[`+oneList+`]`)
+	h := newHarness(t, memory, testBase)
+	added := h.postRecord(testOwner, recordBody(testOwner, "one", aRun))
+	if added.Code != http.StatusCreated {
+		t.Fatalf("response = %d %s", added.Code, added.Body)
+	}
+	expectPrivate(t, added)
+	fields := decodeBody(t, added)
+	if string(fields["revision"]) != "2" || string(fields["accountId"]) != `"`+testOwner+`"` {
+		t.Fatalf("answer = %s", added.Body)
+	}
+	var record workspace.Record
+	if err := json.Unmarshal(fields["record"], &record); err != nil || record.Device == nil || record.Device.Name != "MacBook" {
+		t.Fatalf("record = %s, %v", fields["record"], err)
+	}
+	if records := savedRecords(t, added, "one"); len(records) != 1 || *records[0].ID != "run-1" {
+		t.Fatalf("records = %+v", records)
+	}
+	// Sent again, as a retry after a lost answer: answered with the saved run, and nothing is saved.
+	again := h.postRecord(testOwner, recordBody(testOwner, "one", strings.Replace(aRun, `"time":2.5`, `"time":9`, 1)))
+	if again.Code != http.StatusOK || string(decodeBody(t, again)["revision"]) != "2" {
+		t.Fatalf("again = %d %s", again.Code, again.Body)
+	}
+	if records := savedRecords(t, again, "one"); len(records) != 1 || records[0].Time != 2.5 {
+		t.Fatalf("records = %+v", records)
+	}
+}
+
+func TestAddRecordRefused(t *testing.T) {
+	memory := newMemoryWorkspace(t, `[`+oneList+`]`)
+	h := newHarness(t, memory, testBase)
+	cases := []struct {
+		name, body string
+		status     int
+		key        string
+	}{
+		{"other account", recordBody("github:1", "one", aRun), http.StatusUnauthorized, "loginAccountChanged"},
+		{"no list", recordBody(testOwner, "gone", aRun), http.StatusNotFound, "recordListDeleted"},
+		{"no device", recordBody(testOwner, "one", strings.Replace(aRun, `"mac"`, `"gone"`, 1)), http.StatusBadRequest, "deviceNotFound"},
+		{"bad accuracy", recordBody(testOwner, "one", strings.Replace(aRun, `95.5`, `101`, 1)), http.StatusBadRequest, "invalidRecord"},
+		{"no id", recordBody(testOwner, "one", strings.Replace(aRun, `"id":"run-1",`, ``, 1)), http.StatusBadRequest, "invalidRecord"},
+		{"unknown field", recordBody(testOwner, "one", strings.Replace(aRun, `{`, `{"keys":[1],`, 1)), http.StatusBadRequest, "invalidRecord"},
+		{"extra field", payload(testOwner, `"listId":"one","record":`+aRun+`,"revision":1`), http.StatusBadRequest, "invalidRecord"},
+		{"no list id", payload(testOwner, `"record":`+aRun), http.StatusBadRequest, "invalidRecord"},
+		{"not an object", `[]`, http.StatusBadRequest, "invalidRecord"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expectError(t, h.postRecord(testOwner, c.body), c.status, c.key)
+		})
+	}
+	if memory.revision != 1 || len(memory.w.Lists[0].Records) != 0 {
+		t.Fatalf("saved revision %d, records %+v", memory.revision, memory.w.Lists[0].Records)
+	}
+	t.Run("signed out", func(t *testing.T) {
+		expectError(t, h.postRecord("", recordBody(testOwner, "one", aRun)), http.StatusUnauthorized, "loginRequired")
+	})
+	t.Run("other origin", func(t *testing.T) {
+		expectError(t, h.postRecord(testOwner, recordBody(testOwner, "one", aRun), func(r *http.Request) {
+			r.Header.Set("Origin", "https://evil.example")
+		}), http.StatusForbidden, "forbiddenRequest")
+	})
+	t.Run("GET", func(t *testing.T) {
+		response := h.postRecord(testOwner, "", func(r *http.Request) { r.Method = http.MethodGet })
+		expectError(t, response, http.StatusMethodNotAllowed, "methodNotAllowed")
+	})
+	t.Run("database down", func(t *testing.T) {
+		memory.err = errors.New("down")
+		defer func() { memory.err = nil }()
+		expectError(t, h.postRecord(testOwner, recordBody(testOwner, "one", aRun)), http.StatusServiceUnavailable, "workspaceSaveFailed")
+		if len(h.reports) == 0 || h.reports[len(h.reports)-1] != "record.add" {
+			t.Fatalf("reports = %v", h.reports)
+		}
+	})
+}
+
+// A run is saved however the lists were changed meanwhile, and a list edit made against the revision from before the
+// run is told to reload (409) instead of saving the lists without it.
+func TestAddRecordWithEditsDatabase(t *testing.T) {
+	s, owner := realStore(t)
+	h := newHarness(t, s, testBase)
+	created := h.put(owner, payload(owner, `"revision":0,"lists":[`+oneList+`],"devices":[{"id":"mac","name":"MacBook","layout":"JIS"}]`))
+	if created.Code != http.StatusOK {
+		t.Fatalf("created = %d %s", created.Code, created.Body)
+	}
+	// Another screen renames the list after the practice started from revision 1.
+	renamed := h.put(owner, payload(owner, `"revision":1,"lists":[`+strings.Replace(oneList, `"One"`, `"Renamed"`, 1)+`]`))
+	if renamed.Code != http.StatusOK {
+		t.Fatalf("renamed = %d %s", renamed.Code, renamed.Body)
+	}
+	added := h.postRecord(owner, recordBody(owner, "one", aRun))
+	if added.Code != http.StatusCreated || string(decodeBody(t, added)["revision"]) != "3" {
+		t.Fatalf("added = %d %s", added.Code, added.Body)
+	}
+	again := h.postRecord(owner, recordBody(owner, "one", aRun))
+	if again.Code != http.StatusOK || len(savedRecords(t, again, "one")) != 1 {
+		t.Fatalf("again = %d %s", again.Code, again.Body)
+	}
+	// The screen that renamed it still holds revision 2: its next edit would drop the run, so it must reload.
+	expectError(t, h.put(owner, payload(owner, `"revision":2,"lists":[`+oneList+`]`)), http.StatusConflict, "conflict")
+	read := h.get(owner)
+	records := savedRecords(t, read, "one")
+	var lists []struct{ Name string }
+	_ = json.Unmarshal(decodeBody(t, read)["lists"], &lists)
+	if len(records) != 1 || records[0].Device == nil || len(lists) != 1 || lists[0].Name != "Renamed" {
+		t.Fatalf("read = %s", read.Body)
+	}
+}
+
+func deleteBody(owner, listID, recordID string) string {
+	return payload(owner, `"listId":"`+listID+`","recordId":"`+recordID+`"`)
+}
+
+func (h *harness) deleteRecord(owner, body string) *httptest.ResponseRecorder {
+	return h.postRecord(owner, body, func(r *http.Request) { r.Method = http.MethodDelete })
+}
+
+func TestDeleteRecord(t *testing.T) {
+	memory := newMemoryWorkspace(t, `[`+oneList+`]`)
+	h := newHarness(t, memory, testBase)
+	if added := h.postRecord(testOwner, recordBody(testOwner, "one", aRun)); added.Code != http.StatusCreated {
+		t.Fatalf("added = %d %s", added.Code, added.Body)
+	}
+	deleted := h.deleteRecord(testOwner, deleteBody(testOwner, "one", "run-1"))
+	if deleted.Code != http.StatusOK || string(decodeBody(t, deleted)["revision"]) != "3" || len(savedRecords(t, deleted, "one")) != 0 {
+		t.Fatalf("deleted = %d %s", deleted.Code, deleted.Body)
+	}
+	expectPrivate(t, deleted)
+	// Sent again, or for a list that is gone: answered the same, and nothing is saved.
+	for _, body := range []string{deleteBody(testOwner, "one", "run-1"), deleteBody(testOwner, "gone", "run-1")} {
+		again := h.deleteRecord(testOwner, body)
+		if again.Code != http.StatusOK || string(decodeBody(t, again)["revision"]) != "3" {
+			t.Fatalf("again = %d %s", again.Code, again.Body)
+		}
+	}
+	for name, c := range map[string]struct {
+		body   string
+		status int
+		key    string
+	}{
+		"other account": {deleteBody("github:1", "one", "run-1"), http.StatusUnauthorized, "loginAccountChanged"},
+		"no record id":  {payload(testOwner, `"listId":"one"`), http.StatusBadRequest, "invalidRecord"},
+		"empty id":      {deleteBody(testOwner, "one", ""), http.StatusBadRequest, "invalidRecord"},
+		"extra field":   {payload(testOwner, `"listId":"one","recordId":"run-1","revision":3`), http.StatusBadRequest, "invalidRecord"},
+	} {
+		t.Run(name, func(t *testing.T) { expectError(t, h.deleteRecord(testOwner, c.body), c.status, c.key) })
+	}
+}
+
+// A record is deleted without a revision, so the lists changed meanwhile stay, and an edit made before the delete is
+// told to reload rather than bring the record back.
+func TestDeleteRecordWithEditsDatabase(t *testing.T) {
+	s, owner := realStore(t)
+	h := newHarness(t, s, testBase)
+	created := h.put(owner, payload(owner, `"revision":0,"lists":[`+oneList+`],"devices":[{"id":"mac","name":"MacBook","layout":"JIS"}]`))
+	if created.Code != http.StatusOK {
+		t.Fatalf("created = %d %s", created.Code, created.Body)
+	}
+	added := h.postRecord(owner, recordBody(owner, "one", aRun))
+	if added.Code != http.StatusCreated {
+		t.Fatalf("added = %d %s", added.Code, added.Body)
+	}
+	// Another screen renames the list, with its record, at the revision the record was saved in.
+	lists := strings.Replace(string(decodeBody(t, added)["lists"]), `"One"`, `"Renamed"`, 1)
+	renamed := h.put(owner, payload(owner, `"revision":2,"lists":`+lists))
+	if renamed.Code != http.StatusOK || len(savedRecords(t, renamed, "one")) != 1 {
+		t.Fatalf("renamed = %d %s", renamed.Code, renamed.Body)
+	}
+	deleted := h.deleteRecord(owner, deleteBody(owner, "one", "run-1"))
+	if deleted.Code != http.StatusOK || len(savedRecords(t, deleted, "one")) != 0 {
+		t.Fatalf("deleted = %d %s", deleted.Code, deleted.Body)
+	}
+	var names []struct{ Name string }
+	_ = json.Unmarshal(decodeBody(t, deleted)["lists"], &names)
+	if len(names) != 1 || names[0].Name != "Renamed" {
+		t.Fatalf("lists = %s", deleted.Body)
+	}
+	// The renaming screen still holds revision 3, with the record: its next save would bring it back, so it must reload.
+	expectError(t, h.put(owner, payload(owner, `"revision":3,"lists":`+lists)), http.StatusConflict, "conflict")
+}
+
+// A change the store refuses because the workspace would grow past its limit (workspace.CheckSize) is answered 413, for a
+// record added as for one deleted, with the store's key; any other refusal is a 400.
+func TestRecordChangeRefusedByStore(t *testing.T) {
+	memory := newMemoryWorkspace(t, `[`+oneList+`]`)
+	h := newHarness(t, memory, testBase)
+	for key, status := range map[string]int{"workspaceTooLarge": http.StatusRequestEntityTooLarge, "recordLimit": http.StatusBadRequest} {
+		memory.err = &workspace.Error{Key: key}
+		expectError(t, h.postRecord(testOwner, recordBody(testOwner, "one", aRun)), status, key)
+		if key == "workspaceTooLarge" {
+			// A delete's "already gone" refusals are success, but a workspace too large is not.
+			expectError(t, h.deleteRecord(testOwner, deleteBody(testOwner, "one", "run-1")), status, key)
+		}
+	}
+	memory.err = nil
+}
+
+// contract reads docs/api/workspace-records.openapi.json: for each method of /api/workspace/records, the error keys
+// each status may answer with ("" for a status without an error, such as 200).
+func contract(t *testing.T) (map[string]map[string][]string, map[string]any) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "api", "workspace-records.openapi.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]struct {
+				Content map[string]struct {
+					Schema struct {
+						Properties struct {
+							Error struct{ Enum []string }
+						}
+					}
+				}
+			}
+		}
+		Components struct{ Schemas map[string]any }
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	methods := map[string]map[string][]string{}
+	for method, operation := range doc.Paths["/api/workspace/records"] {
+		statuses := map[string][]string{}
+		for status, response := range operation.Responses {
+			keys := response.Content["application/json"].Schema.Properties.Error.Enum
+			if len(keys) == 0 {
+				keys = []string{""}
+			}
+			statuses[status] = keys
+		}
+		methods[strings.ToUpper(method)] = statuses
+	}
+	return methods, doc.Components.Schemas
+}
+
+// Every answer of /api/workspace/records is one the contract declares, and every one it declares is answered to some
+// request, so the definition the app and other programs read is the handler's.
+func TestRecordsContract(t *testing.T) {
+	methods, _ := contract(t)
+	memory := newMemoryWorkspace(t, `[`+oneList+`,`+strings.Replace(oneList, `"one"`, `"full"`, 1)+`]`)
+	full := memory.w.Find("full")
+	for i := range workspace.MaxRecords {
+		id := fmt.Sprintf("r%d", i)
+		full.Records = append(full.Records, workspace.Record{ID: &id, Time: 1, Date: "2026-10-01T00:00:00.000Z"})
+	}
+	h := newHarness(t, memory, testBase)
+	down := newMemoryWorkspace(t, `[`+oneList+`]`)
+	down.err = errors.New("down")
+	hDown := newHarness(t, down, testBase)
+	hSessions := newHarness(t, revocationsDown{memory}, testBase)
+	del := func(r *http.Request) { r.Method = http.MethodDelete }
+	get := func(r *http.Request) { r.Method = http.MethodGet }
+	otherOrigin := func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") }
+	tooLarge := payload(testOwner, `"listId":"one","record":`+aRun+`,"pad":"`+strings.Repeat("x", 1<<20)+`"`)
+	type call struct {
+		h      *harness
+		owner  string
+		body   string
+		change []func(*http.Request)
+	}
+	calls := []call{
+		{h, testOwner, recordBody(testOwner, "one", aRun), nil},
+		{h, testOwner, recordBody(testOwner, "one", aRun), nil},
+		{h, testOwner, "", nil},
+		{h, testOwner, recordBody(testOwner, "one", strings.Replace(aRun, `95.5`, `101`, 1)), nil},
+		// A new id: a saved one is answered as sent again before its device is looked at.
+		{h, testOwner, recordBody(testOwner, "one", strings.Replace(strings.Replace(aRun, `"mac"`, `"gone"`, 1), "run-1", "run-2", 1)), nil},
+		{h, testOwner, recordBody(testOwner, "full", strings.Replace(aRun, "run-1", "new", 1)), nil},
+		{h, testOwner, recordBody(testOwner, "gone", aRun), nil},
+		{h, "", recordBody(testOwner, "one", aRun), nil},
+		{h, testOwner, recordBody("github:1", "one", aRun), nil},
+		{h, testOwner, recordBody(testOwner, "one", aRun), []func(*http.Request){otherOrigin}},
+		{h, testOwner, tooLarge, nil},
+		{hDown, testOwner, recordBody(testOwner, "one", aRun), nil},
+		{hSessions, testOwner, recordBody(testOwner, "one", aRun), nil},
+		{h, testOwner, deleteBody(testOwner, "one", "run-1"), []func(*http.Request){del}},
+		{h, testOwner, "", []func(*http.Request){del}},
+		{h, testOwner, payload(testOwner, `"listId":"one"`), []func(*http.Request){del}},
+		{h, "", deleteBody(testOwner, "one", "run-1"), []func(*http.Request){del}},
+		{h, testOwner, deleteBody("github:1", "one", "run-1"), []func(*http.Request){del}},
+		{h, testOwner, deleteBody(testOwner, "one", "run-1"), []func(*http.Request){del, otherOrigin}},
+		{h, testOwner, tooLarge, []func(*http.Request){del}},
+		{hDown, testOwner, deleteBody(testOwner, "one", "run-1"), []func(*http.Request){del}},
+		{hSessions, testOwner, deleteBody(testOwner, "one", "run-1"), []func(*http.Request){del}},
+		{h, testOwner, "", []func(*http.Request){get}},
+	}
+	seen := map[string]bool{}
+	for i, c := range calls {
+		response := c.h.postRecord(c.owner, c.body, c.change...)
+		var answer struct{ Error string }
+		_ = json.Unmarshal(response.Body.Bytes(), &answer)
+		status := fmt.Sprint(response.Code)
+		requestMethod := http.MethodPost
+		for _, f := range c.change {
+			r := httptest.NewRequest(http.MethodPost, "/", nil)
+			f(r)
+			if r.Method != http.MethodPost {
+				requestMethod = r.Method
+			}
+		}
+		// 405 is answered to any other method; it is declared under each method the path has.
+		declaredUnder := requestMethod
+		if requestMethod == http.MethodGet {
+			declaredUnder = http.MethodPost
+		}
+		keys, ok := methods[declaredUnder][status]
+		if !ok || !slices.Contains(keys, answer.Error) {
+			t.Errorf("call %d (%s): %s %q is not declared for %s", i, requestMethod, status, answer.Error, declaredUnder)
+		}
+		seen[declaredUnder+" "+status+" "+answer.Error] = true
+	}
+	for method, statuses := range methods {
+		for status, keys := range statuses {
+			for _, key := range keys {
+				if !seen[method+" "+status+" "+key] {
+					if method == http.MethodDelete && status == "405" {
+						continue // The same answer as POST's 405, for the same requests.
+					}
+					t.Errorf("%s %s %q is declared but never answered", method, status, key)
+				}
+			}
+		}
+	}
+}
+
+// The record a request gives has the fields the contract's RecordInput declares, no more and no fewer.
+func TestRecordInputContract(t *testing.T) {
+	_, schemas := contract(t)
+	properties, _ := schemas["RecordInput"].(map[string]any)["properties"].(map[string]any)
+	var declared []string
+	for name := range properties {
+		declared = append(declared, name)
+	}
+	var fields []string
+	input := reflect.TypeFor[workspace.RecordInput]()
+	for i := range input.NumField() {
+		name, _, _ := strings.Cut(input.Field(i).Tag.Get("json"), ",")
+		if name != "-" {
+			fields = append(fields, name)
+		}
+	}
+	slices.Sort(declared)
+	slices.Sort(fields)
+	if !slices.Equal(declared, fields) {
+		t.Fatalf("RecordInput fields = %v; the contract declares %v", fields, declared)
+	}
+}
+
+func TestRecordModeIsKept(t *testing.T) {
+	memory := newMemoryWorkspace(t, `[`+oneList+`]`)
+	h := newHarness(t, memory, testBase)
+	recall := strings.Replace(aRun, `"deviceId":"mac"`, `"mode":"recall"`, 1)
+	added := h.postRecord(testOwner, recordBody(testOwner, "one", recall))
+	if added.Code != http.StatusCreated {
+		t.Fatalf("response = %d %s", added.Code, added.Body)
+	}
+	if records := savedRecords(t, h.get(testOwner), "one"); len(records) != 1 || records[0].Mode != "recall" {
+		t.Fatalf("records = %+v", records)
+	}
+	bad := strings.Replace(strings.Replace(recall, `"recall"`, `"x"`, 1), `"run-1"`, `"run-2"`, 1)
+	expectError(t, h.postRecord(testOwner, recordBody(testOwner, "one", bad)), http.StatusBadRequest, "invalidRecord")
+}
+
+func TestPutKeepsRecordMode(t *testing.T) {
+	saved := &fakeWorkspaces{saved: &store.Saved{Lists: json.RawMessage("[]"), Devices: json.RawMessage("[]"), Revision: 1}}
+	h := newHarness(t, saved, testBase)
+	list := strings.Replace(oneList, `"records":[]`, `"records":[{"id":"r1","time":1,"date":"2026-10-02T10:00:00.000Z","mode":"recall"}]`, 1)
+	put := h.put(testOwner, payload(testOwner, `"revision":1,"lists":[`+list+`]`))
+	if put.Code != http.StatusOK {
+		t.Fatalf("PUT = %d %s", put.Code, put.Body)
+	}
+	if records := savedRecords(t, put, "one"); len(records) != 1 || records[0].Mode != "recall" || records[0].Extra != "" {
+		t.Fatalf("records = %+v", records)
+	}
+}

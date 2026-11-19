@@ -1,0 +1,11 @@
+# The build context is the repository root (docker build -f kotlin/Dockerfile .): only what the build reads goes in.
+*
+!kotlin/build.gradle.kts
+!kotlin/settings.gradle.kts
+!kotlin/gradle
+!kotlin/gradlew
+!kotlin/src/main
+!src/lib/packs/samples.json
+!src/lib/packs/countries.json
+!src/lib/packs/commands/*.json
+!src/messages/ja/format.json
