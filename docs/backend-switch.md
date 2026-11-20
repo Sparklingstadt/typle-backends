@@ -44,6 +44,9 @@ Vercel の環境変数はデプロイごとに決まるので、変えたあと�
 
 ## 気をつけること
 
+- ログインは Next.js（Auth.js）だけです。Go は Cookie（`github:…`・`password:<UUID>`・`ffpf:…` のアカウント）を読むだけで、Go に切り替えても ID・パスワードのアカウントの保存は通ります（`tests/fixtures/sessions.json` が確かめます）。
+- `TYPLE_BACKEND=go` のときだけ、v2.54.0 までに発行したアプリのトークン（`Authorization: Bearer`、30日で切れる）が Go では通ります。Go の Bearer のコードは、Next.js の写しとして意図してそのままにしてあります。Next.js はもうトークンを発行せず、読みもしません（v2.55.0 から）。
+
 - Go は、比べた時点の Next.js（v2.52.0）に動きをそろえてあります。そのあと Next.js の workspace や records の動きを変えたら、Go も直すまで Go に切り替えないでください。共通の fixture（`tests/fixtures/`）を変えると、`go test ./...` で食い違いが分かります。
 - 公式パックのカタログを変えたら、`server/internal/workspace/packs/` も写し直します（`go test` の `TestPacksMatchApp` が知らせます）。
 - 比較モード（`TYPLE_BACKEND_COMPARE=1`）と一緒に付けると、ヘッダーのないリクエストは Go、`x-typle-backend: next` は Next.js に行きます。

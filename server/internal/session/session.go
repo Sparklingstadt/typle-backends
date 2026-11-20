@@ -27,9 +27,9 @@ const (
 	appInfo     = "typle app session v1"
 )
 
-// accountSub is ACCOUNT_SUB of src/server/session.ts: a GitHub account (its numeric id) or an FFPF ID account (its
-// lowercase alphanumeric sub).
-var accountSub = regexp.MustCompile(`^(github:\d+|ffpf:[a-z0-9]{1,64})$`)
+// accountSub is ACCOUNT_SUB of src/server/session.ts: a GitHub account (its numeric id), an ID and password account
+// (a lowercase UUID) or an FFPF ID account (its lowercase alphanumeric sub).
+var accountSub = regexp.MustCompile(`^(github:\d+|password:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ffpf:[a-z0-9]{1,64})$`)
 
 // Session is a signed-in user. IssuedAt and Expires are the iat and exp claims, in Unix seconds, as the JavaScript
 // numbers src/server/session.ts reads them as.

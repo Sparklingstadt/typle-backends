@@ -59,7 +59,7 @@ object WhatwgUrl {
 data class Session(val sub: String, val name: String, val image: String, val issuedAt: Long, val expires: Long)
 
 object Sessions {
-    private val accountSub = Regex("^(github:\\d+|ffpf:[a-z0-9]{1,64})$")
+    private val accountSub = Regex("^(github:\\d+|password:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ffpf:[a-z0-9]{1,64})$")
     private val base64url = Regex("^[A-Za-z0-9_-]*$")
 
     /** The bytes of strictly written base64url text (no padding, unused bits zero), or null. */
