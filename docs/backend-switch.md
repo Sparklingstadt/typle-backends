@@ -44,7 +44,6 @@ Vercel の環境変数はデプロイごとに決まるので、変えたあと�
 
 ## 気をつけること
 
-- Go は Sentry に送りません。この3つの API のエラーは、Vercel の関数のログにだけ出ます。
 - Go は、比べた時点の Next.js（v2.52.0）に動きをそろえてあります。そのあと Next.js の workspace や records の動きを変えたら、Go も直すまで Go に切り替えないでください。共通の fixture（`tests/fixtures/`）を変えると、`go test ./...` で食い違いが分かります。
 - 公式パックのカタログを変えたら、`server/internal/workspace/packs/` も写し直します（`go test` の `TestPacksMatchApp` が知らせます）。
 - 比較モード（`TYPLE_BACKEND_COMPARE=1`）と一緒に付けると、ヘッダーのないリクエストは Go、`x-typle-backend: next` は Next.js に行きます。

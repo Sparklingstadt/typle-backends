@@ -69,7 +69,7 @@ object Account {
     }
 }
 
-/** src/server/report.ts: a failure answered with a 503, in the log (there is no Sentry here). */
+/** src/server/report.ts: a failure answered with a 503, in the log, as the Next.js routes do. */
 object Report {
     fun failure(request: Request, error: Throwable, operation: String) {
         System.err.println("${request.method} ${request.path}: $operation: $error")

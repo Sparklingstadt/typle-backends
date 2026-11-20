@@ -30,7 +30,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, f *failure) {
 }
 
 // report tells Config.Report, or the log, of a failure that is answered with a 503, as reportFailure of
-// src/server/report.ts logs it (Sentry is left out here).
+// src/server/report.ts logs it.
 func (s *server) report(r *http.Request, err error, operation string) {
 	if s.config.Report != nil {
 		s.config.Report(r, err, operation)
