@@ -1,0 +1,5 @@
+<% require_relative "../app/lib/typle/database_url" %>
+# The url key keeps Rails from merging DATABASE_URL in as it is (Typle::DatabaseUrl rewrites its sslmode).
+<% %w[development test production].each do |name| %>
+<%= name %>: <%= Typle::DatabaseUrl.config(Typle::DatabaseUrl.from_env(ENV, name)).compact.to_json %>
+<% end %>

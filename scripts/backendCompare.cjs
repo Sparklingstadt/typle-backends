@@ -1,6 +1,6 @@
 // The comparison of the backends (docs/superpowers/specs/2026-11-19-backend-compare-design.md): a deployment built with
-// TYPLE_BACKEND_COMPARE=1 sends a request for one of these paths to the Go function or to the Kotlin service on Cloud
-// Run when its x-typle-backend header names that backend, and to the Next.js Route Handlers otherwise. Without the
+// TYPLE_BACKEND_COMPARE=1 sends a request for one of these paths to the Go function, or to the Kotlin or Rails service on
+// Cloud Run (docs/superpowers/specs/2026-11-21-rails-backend-design.md), when its x-typle-backend header names that backend, and to the Next.js Route Handlers otherwise. Without the
 // variable there are no such rewrites, so the header changes nothing. Apart from the comparison, TYPLE_BACKEND=go sends
 // every request for these paths to the Go function, in any environment, production included (docs/backend-switch.md).
 // next.config.mjs and scripts/bench-backends.cjs share this list.
@@ -39,39 +39,49 @@ function toGo(source) {
 }
 
 /**
- * The Kotlin service's origin from TYPLE_KOTLIN_URL, without a trailing slash; null when it is not set. Throws when it
- * is not an https URL with only an origin, so a typo fails the build instead of sending requests somewhere else.
+ * The origin of a service in the environment variable name, without a trailing slash; null when it is not set. Throws
+ * when it is not an https URL with only an origin, so a typo fails the build instead of sending requests somewhere else.
  */
-function kotlinOrigin(env = process.env) {
-  const value = env.TYPLE_KOTLIN_URL
+function serviceOrigin(name, env) {
+  const value = env[name]
   if (value === undefined || value === '') return null
   let url
   try {
     url = new URL(value)
   } catch {
-    throw new Error(`TYPLE_KOTLIN_URL (${value}) は URL にしてください。`)
+    throw new Error(`${name} (${value}) は URL にしてください。`)
   }
   if (url.protocol !== 'https:' || url.pathname !== '/' || url.search !== '' || url.hash !== '' || url.username !== '' || url.password !== '') {
-    throw new Error(`TYPLE_KOTLIN_URL (${value}) は https:// のオリジンだけにしてください。`)
+    throw new Error(`${name} (${value}) は https:// のオリジンだけにしてください。`)
   }
   return url.origin
+}
+
+/** The Kotlin service's origin from TYPLE_KOTLIN_URL (serviceOrigin). */
+function kotlinOrigin(env = process.env) {
+  return serviceOrigin('TYPLE_KOTLIN_URL', env)
+}
+
+/** The Rails service's origin from TYPLE_RAILS_URL (serviceOrigin). */
+function railsOrigin(env = process.env) {
+  return serviceOrigin('TYPLE_RAILS_URL', env)
 }
 
 /**
  * The beforeFiles rewrites of next.config.mjs. With TYPLE_BACKEND=go, the compared paths go to the Go function: every
  * request outside the comparison, and those without x-typle-backend in it (next then still picks Next.js). In the
- * comparison, x-typle-backend picks Go or Kotlin. None when neither is on.
+ * comparison, x-typle-backend picks Go, Kotlin or Rails. None when neither is on.
  */
 function backendRewrites(env = process.env) {
   const compare = compareEnabled(env)
   const fallback = defaultBackend(env)
-  const kotlin = compare ? kotlinOrigin(env) : null
+  const services = compare ? [['kotlin', kotlinOrigin(env)], ['rails', railsOrigin(env)]] : []
   return COMPARED_PATHS.flatMap((source) => {
     const rules = []
     if (compare) {
       rules.push({ source, has: [{ type: 'header', key: BACKEND_HEADER, value: 'go' }], destination: toGo(source) })
-      if (kotlin !== null) {
-        rules.push({ source, has: [{ type: 'header', key: BACKEND_HEADER, value: 'kotlin' }], destination: `${kotlin}${source}` })
+      for (const [name, origin] of services) {
+        if (origin !== null) rules.push({ source, has: [{ type: 'header', key: BACKEND_HEADER, value: name }], destination: `${origin}${source}` })
       }
     }
     if (fallback === 'go') {
@@ -98,4 +108,4 @@ function nextBackendHeaders(env = process.env) {
   ])
 }
 
-module.exports = { BACKEND_HEADER, COMPARED_PATHS, compareEnabled, defaultBackend, kotlinOrigin, backendRewrites, nextBackendHeaders }
+module.exports = { BACKEND_HEADER, COMPARED_PATHS, compareEnabled, defaultBackend, kotlinOrigin, railsOrigin, backendRewrites, nextBackendHeaders }

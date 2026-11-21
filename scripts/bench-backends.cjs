@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Times the compared paths (scripts/backendCompare.cjs) on a deployment built with TYPLE_BACKEND_COMPARE=1: each round
-// sends the same request to Next.js, Go and Kotlin through the deployment (x-typle-backend), and to the Kotlin service
-// directly when --kotlin is given, in turn, so that all of them meet the same database and the same hour. Prints p50,
+// sends the same request to Next.js, Go and Kotlin through the deployment (x-typle-backend), to the Kotlin service
+// directly when --kotlin is given, and to Rails through the deployment and directly when --rails is given, in turn, so that all of them meet the same database and the same hour. Prints p50,
 // p95 and the slowest round trip of each, in milliseconds, and the failures.
 //
 // Usage:
-//   TYPLE_BENCH_COOKIE='__Host-typle-session=…' node scripts/bench-backends.cjs <deployment URL> [--kotlin <URL>]
+//   TYPLE_BENCH_COOKIE='__Host-typle-session=…' node scripts/bench-backends.cjs <deployment URL> [--kotlin <URL>] [--rails <URL>]
 //     [--rounds 50] [--warmup 3] [--origin <URL>] [--only health,workspace.get,workspace.put,records]
 //
 // TYPLE_BENCH_COOKIE is the Cookie header of a test account signed in on the production site (the preview has no OAuth
@@ -16,11 +16,14 @@
 
 const { BACKEND_HEADER } = require('./backendCompare.cjs')
 
-const TARGETS = ['next', 'go', 'kotlin', 'kotlin-direct']
+const TARGETS = ['next', 'go', 'kotlin', 'kotlin-direct', 'rails', 'rails-direct']
+
+/** The service each direct target sends to, by its option. */
+const DIRECT = { 'kotlin-direct': 'kotlin', 'rails-direct': 'rails' }
 const OPERATIONS = ['health', 'workspace.get', 'workspace.put', 'records']
 
 function parseArgs(argv) {
-  const options = { url: null, kotlin: null, rounds: 50, warmup: 3, origin: null, only: OPERATIONS }
+  const options = { url: null, kotlin: null, rails: null, rounds: 50, warmup: 3, origin: null, only: OPERATIONS }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const value = () => {
@@ -28,6 +31,7 @@ function parseArgs(argv) {
       return argv[++i]
     }
     if (arg === '--kotlin') options.kotlin = value()
+    else if (arg === '--rails') options.rails = value()
     else if (arg === '--rounds') options.rounds = count(value(), arg, 1)
     else if (arg === '--warmup') options.warmup = count(value(), arg, 0)
     else if (arg === '--origin') options.origin = value()
@@ -40,6 +44,7 @@ function parseArgs(argv) {
   for (const name of options.only) if (!OPERATIONS.includes(name)) throw new Error(`--only は ${OPERATIONS.join('・')} から選んでください: ${name}`)
   options.url = new URL(options.url).origin
   if (options.kotlin !== null) options.kotlin = new URL(options.kotlin).origin
+  if (options.rails !== null) options.rails = new URL(options.rails).origin
   options.origin = options.origin === null ? options.url : new URL(options.origin).origin
   return options
 }
@@ -69,8 +74,9 @@ function makeClient(options, env) {
 
   /** One request to target; the time is from sending to the end of the body. */
   return async function send(target, method, path, body) {
-    const direct = target === 'kotlin-direct'
-    if (direct && options.kotlin === null) throw new Error('--kotlin がありません。')
+    const service = DIRECT[target]
+    const direct = service !== undefined
+    if (direct && options[service] === null) throw new Error(`--${service} がありません。`)
     const headers = { Cookie: cookie, Accept: 'application/json' }
     if (!direct) {
       headers[BACKEND_HEADER] = target
@@ -81,13 +87,13 @@ function makeClient(options, env) {
       headers.Origin = options.origin
     }
     const started = performance.now()
-    const response = await fetch(`${direct ? options.kotlin : options.url}${path}`, {
+    const response = await fetch(`${direct ? options[service] : options.url}${path}`, {
       method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'manual',
     })
     const text = await response.text()
     const ms = performance.now() - started
     const answeredBy = response.headers.get(BACKEND_HEADER)
-    const expected = direct ? 'kotlin' : target
+    const expected = direct ? service : target
     let json = null
     try {
       json = JSON.parse(text)
@@ -132,17 +138,29 @@ function operationFor(name, send) {
   }
 }
 
+/**
+ * The targets measured: Kotlin directly only with --kotlin, and Rails only with --rails (a preview without
+ * TYPLE_RAILS_URL answers x-typle-backend: rails from Next.js, so every round would fail).
+ */
+function targetsFor(options) {
+  return TARGETS.filter((target) => {
+    if (target === 'rails') return options.rails !== null
+    const service = DIRECT[target]
+    return service === undefined || options[service] !== null
+  })
+}
+
 const OK = { health: 200, 'workspace.get': 200, 'workspace.put': 200, records: 200 }
 
 async function main(argv = process.argv.slice(2), env = process.env) {
   const options = parseArgs(argv)
   const send = makeClient(options, env)
-  const targets = TARGETS.filter(target => target !== 'kotlin-direct' || options.kotlin !== null)
+  const targets = targetsFor(options)
 
   // Signed in as the account on every backend? A 401 here usually means the preview's AUTH_SECRET is not production's.
   for (const target of targets) {
     const check = await send(target, 'GET', '/api/workspace')
-    if (!check.rightBackend) throw new Error(`${target}: ${BACKEND_HEADER} が ${check.answeredBy ?? 'なし'} でした。比較モード（TYPLE_BACKEND_COMPARE=1）のデプロイか、TYPLE_KOTLIN_URL を確かめてください。`)
+    if (!check.rightBackend) throw new Error(`${target}: ${BACKEND_HEADER} が ${check.answeredBy ?? 'なし'} でした。比較モード（TYPLE_BACKEND_COMPARE=1）のデプロイか、TYPLE_KOTLIN_URL・TYPLE_RAILS_URL を確かめてください。`)
     if (check.status === 401) throw new Error(`${target}: 401 でした。Cookie が古いか、プレビューの AUTH_SECRET が本番と違います。`)
     if (check.status !== 200) throw new Error(`${target}: GET /api/workspace が ${check.status} でした。`)
   }
@@ -185,4 +203,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { parseArgs, percentile, summarize }
+module.exports = { parseArgs, percentile, summarize, targetsFor }

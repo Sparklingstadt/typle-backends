@@ -1,0 +1,30 @@
+module Typle
+  # src/lib/limits.ts (checked against tests/fixtures/limits.json).
+  module Limits
+    MAX_LISTS = 150
+    MAX_FOLLOWED_PACKS = 200
+    MAX_LIST_NAME = 200
+    MAX_WORDS = 1000
+    MAX_RECORDS = 10_000
+    MAX_CATEGORY = 50
+    MAX_TAG = 50
+    MAX_TAGS = 20
+    MAX_GROUP = 200
+    MAX_LEVELS = 1
+    MAX_SAVED_LEVELS = 5
+    MAX_LEVEL = 50
+    MAX_INTERESTS = 50
+    MAX_INTEREST_LENGTH = 50
+    MAX_PACK_NAME = 200
+    MAX_PACK_DESCRIPTION = 500
+    MAX_DEVICES = 100
+    MAX_DEVICE_NAME = 100
+    MAX_DEVICE_LAYOUT = 200
+    MAX_MISSED_WORDS = 20
+    MAX_WEAK_REVIEW_MISSED = 200
+    MAX_WORD_TEXT = 1000
+    MAX_ANNOTATION = 2000
+    MAX_RECORD_ID = 100
+    MAX_NAME = 200
+  end
+end

@@ -1,13 +1,13 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
-const { backendRewrites, nextBackendHeaders, kotlinOrigin, defaultBackend, COMPARED_PATHS } = require('../scripts/backendCompare.cjs')
+const { backendRewrites, nextBackendHeaders, kotlinOrigin, railsOrigin, defaultBackend, COMPARED_PATHS } = require('../scripts/backendCompare.cjs')
 
 // The comparison of the backends (scripts/backendCompare.cjs): only a deployment built with TYPLE_BACKEND_COMPARE=1
 // reads x-typle-backend, so the header changes nothing in production. TYPLE_BACKEND=go moves the compared paths to Go
 // for every request, in production too.
 
 test('without TYPLE_BACKEND_COMPARE=1 nothing is forwarded or marked', () => {
-  for (const env of [{}, { TYPLE_BACKEND_COMPARE: '0' }, { TYPLE_BACKEND_COMPARE: 'true' }, { TYPLE_KOTLIN_URL: 'https://k.example' }, { TYPLE_BACKEND: 'next' }]) {
+  for (const env of [{}, { TYPLE_BACKEND_COMPARE: '0' }, { TYPLE_BACKEND_COMPARE: 'true' }, { TYPLE_KOTLIN_URL: 'https://k.example' }, { TYPLE_RAILS_URL: 'https://r.example' }, { TYPLE_BACKEND: 'next' }]) {
     assert.deepEqual(backendRewrites(env), [])
     assert.deepEqual(nextBackendHeaders(env), [])
   }
@@ -35,6 +35,25 @@ test('TYPLE_KOTLIN_URL must be an https origin', () => {
   for (const value of ['http://k.example', 'https://k.example/api', 'https://k.example/?x=1', 'k.example', 'https://u:p@k.example']) {
     assert.throws(() => kotlinOrigin({ TYPLE_KOTLIN_URL: value }), /TYPLE_KOTLIN_URL/, value)
   }
+})
+
+test('with TYPLE_RAILS_URL x-typle-backend: rails goes to the same path on the Rails service', () => {
+  const rules = backendRewrites({ TYPLE_BACKEND_COMPARE: '1', TYPLE_RAILS_URL: 'https://typle-rails-abc.a.run.app/' })
+  const rails = rules.filter(rule => rule.has[0].value === 'rails')
+  assert.deepEqual(rails.map(rule => rule.destination), COMPARED_PATHS.map(source => `https://typle-rails-abc.a.run.app${source}`))
+  assert.equal(rules.length, COMPARED_PATHS.length * 2)
+  const all = backendRewrites({ TYPLE_BACKEND_COMPARE: '1', TYPLE_KOTLIN_URL: 'https://k.example', TYPLE_RAILS_URL: 'https://r.example' })
+  assert.deepEqual(all.filter(rule => rule.source === '/api/health').map(rule => rule.has[0].value), ['go', 'kotlin', 'rails'])
+})
+
+test('TYPLE_RAILS_URL must be an https origin', () => {
+  assert.equal(railsOrigin({}), null)
+  assert.equal(railsOrigin({ TYPLE_RAILS_URL: '' }), null)
+  for (const value of ['http://r.example', 'https://r.example/api', 'https://r.example/?x=1', 'r.example', 'https://u:p@r.example']) {
+    assert.throws(() => railsOrigin({ TYPLE_RAILS_URL: value }), /TYPLE_RAILS_URL/, value)
+  }
+  // Outside the comparison it is not read.
+  assert.deepEqual(backendRewrites({ TYPLE_RAILS_URL: 'not a URL' }), [])
 })
 
 test('the Next.js answers are marked only for the requests that go to Next.js', () => {
