@@ -213,3 +213,22 @@ func TestCookieName(t *testing.T) {
 		t.Fatal(CookieName(true), CookieName(false))
 	}
 }
+
+// A Sparklingstadt ID account (sid:<sub>, the sub lowercase alphanumeric) opens as in TypeScript.
+func TestOpenSidSubject(t *testing.T) {
+	keys, _ := NewKeys("secret")
+	now := time.Unix(1000, 0)
+	for sub, want := range map[string]bool{
+		"sid:cm3abc123":                  true,
+		"sid:" + strings.Repeat("a", 64): true,
+		"sid:":                           false,
+		"sid:ABC":                        false,
+		"sid:a-b":                        false,
+		"sid:" + strings.Repeat("a", 65): false,
+		"SID:abc":                        false,
+	} {
+		if _, ok := keys.Open(keys.Seal(New(sub, "N", "", now)), now); ok != want {
+			t.Errorf("%q: opened %v; want %v", sub, ok, want)
+		}
+	}
+}
