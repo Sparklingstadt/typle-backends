@@ -1,5 +1,7 @@
 # バックエンドの速度比較（Next.js・Go・Kotlin・Rails）
 
+> **この文書は、typle-r の v2.60.4 までの手順です。** typle-r は v2.60.5 で、`x-typle-backend` の振り分けと `TYPLE_BACKEND=go` の切り替えを外しました。文中の `next.config.mjs`・`src/`・`.env.local`・`npm run verify` は typle-r のものです。今できることは、このリポジトリの [README](../README.md) の「計測」にあります。
+
 いまの Next.js の Route Handler と、Go（v2.47.0 で消したものを比較用に戻したもの）、Kotlin（Ktor）、Rails の速さを、Vercel の上で同じ条件で比べる仕組みです。比べるためだけのもので、本番では Next.js しか動きません（本番でも Go に切り替えるときは [docs/backend-switch.md](backend-switch.md)）。設計は [docs/superpowers/specs/2026-11-19-backend-compare-design.md](superpowers/specs/2026-11-19-backend-compare-design.md) にあり、Rails は [docs/superpowers/specs/2026-11-21-rails-backend-design.md](superpowers/specs/2026-11-21-rails-backend-design.md) で足しました。
 
 ## しくみ

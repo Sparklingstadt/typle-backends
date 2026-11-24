@@ -1,5 +1,7 @@
 # バックエンドを Go に切り替える（`TYPLE_BACKEND=go`）
 
+> **この文書は、typle-r の v2.60.4 までの手順です。** typle-r は v2.60.5 で、`x-typle-backend` の振り分けと `TYPLE_BACKEND=go` の切り替えを外しました。文中の `next.config.mjs`・`src/`・`.env.local`・`npm run verify` は typle-r のものです。今できることは、このリポジトリの [README](../README.md) の「計測」にあります。
+
 環境変数 `TYPLE_BACKEND=go` を付けてデプロイすると、次の3つの API を Go（Vercel の Go 関数 `api/go.go`）が答えます。本番でもプレビューでも同じです。外せば Next.js に戻ります。
 
 - `/api/health`（GET）

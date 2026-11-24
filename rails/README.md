@@ -1,5 +1,7 @@
 # Rails のバックエンド（速度比較用）
 
+> typle-r から分けたリポジトリです。文中の `.env.local`・`db/`・`npm run verify`・`next.config.mjs` は [typle-r](https://github.com/Sparklingstadt/typle-r) のものです。`tests/fixtures` と `src/` は、このリポジトリにある写しを読みます（[README](../README.md) の「typle-r からの写し」）。
+
 `docs/superpowers/specs/2026-11-21-rails-backend-design.md` の速度比較のためだけの Rails（Ruby 3.4.1・Rails 8.1・Puma、
 YJIT オン）の API です。本番のバックエンドではありません。Next.js の Route Handler と同じ答えを返すように、次のエンドポイント
 だけを受けます（Kotlin 版 `kotlin/` と同じ範囲です）。
