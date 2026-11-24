@@ -1,0 +1,91 @@
+{
+  "comment": "strconv.FormatFloat(v, 'g', -1, 64) and store.legacyID of the Go backend. src/server/records.ts must give the same (tests/serverRecords.test.cjs).",
+  "floats": [
+    {
+      "value": 0,
+      "go": "0"
+    },
+    {
+      "value": 1,
+      "go": "1"
+    },
+    {
+      "value": 1500,
+      "go": "1500"
+    },
+    {
+      "value": 1234.5,
+      "go": "1234.5"
+    },
+    {
+      "value": 999999,
+      "go": "999999"
+    },
+    {
+      "value": 1000000,
+      "go": "1e+06"
+    },
+    {
+      "value": 1234567,
+      "go": "1.234567e+06"
+    },
+    {
+      "value": 0.0001,
+      "go": "0.0001"
+    },
+    {
+      "value": 0.00001,
+      "go": "1e-05"
+    },
+    {
+      "value": 100000000000000000000,
+      "go": "1e+20"
+    },
+    {
+      "value": 1e+21,
+      "go": "1e+21"
+    },
+    {
+      "value": 123456.789,
+      "go": "123456.789"
+    },
+    {
+      "value": 59999.99999,
+      "go": "59999.99999"
+    },
+    {
+      "value": 3.0000000000000004,
+      "go": "3.0000000000000004"
+    }
+  ],
+  "ids": [
+    {
+      "listId": "l1",
+      "position": 0,
+      "date": "2026-09-07T00:00:00.000Z",
+      "time": 1500,
+      "id": "legacy-fac8cf22c83c8cc3ef15"
+    },
+    {
+      "listId": "l1",
+      "position": 3,
+      "date": "2026-09-07T12:34:56.789Z",
+      "time": 1234567,
+      "id": "legacy-ba94b4b63a39e5610c48"
+    },
+    {
+      "listId": "リスト",
+      "position": 1,
+      "date": "2026-01-01T00:00:00.000Z",
+      "time": 0.5,
+      "id": "legacy-61a0d5dcb15410b55935"
+    },
+    {
+      "listId": "x",
+      "position": 10,
+      "date": "2026/9/7 12:00:00",
+      "time": 999999,
+      "id": "legacy-4d1420e7e6f448c45c1c"
+    }
+  ]
+}

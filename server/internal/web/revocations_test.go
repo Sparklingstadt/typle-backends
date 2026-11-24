@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sparklingstadt/typle-r/server/internal/session"
-	"github.com/sparklingstadt/typle-r/server/internal/store"
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
+	"github.com/sparklingstadt/typle-backends/server/internal/store"
 )
 
 // revocations is a database that keeps when each account signed out of every device.

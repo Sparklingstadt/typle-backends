@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sparklingstadt/typle-r/server/internal/store"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/store"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // memoryWorkspace is a database of one account's workspace, changed with Modify as store.Store does.

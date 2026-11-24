@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // legacyLists are lists saved before typle_records: records in the lists, one without an id and two of the same id.

@@ -1,0 +1,10 @@
+{
+  "comment": "Login cookies and an app token the Go backend sealed with the secret at a fixed time (now, Unix seconds): alice and bob are cookies of github:9100000001 and github:9100000002, alice-app an app token of alice. tests/serverSession.test.cjs, server/internal/session and kotlin's LibTest seal and open them the same.",
+  "now": 1790000100,
+  "secret": "typle-fixture-secret",
+  "values": {
+    "alice": "eyJzdWIiOiJnaXRodWI6OTEwMDAwMDAwMSIsIm5hbWUiOiJBbGljZSIsImltYWdlIjoiaHR0cHM6Ly9hdmF0YXJzLmV4YW1wbGUvdS8xIiwiaWF0IjoxNzkwMDAwMDAwLCJleHAiOjE3OTI1OTIwMDB9.mYl0JShmJtc0bxwc0iobhn-S-arzT7QgjUXOrJCp84k",
+    "alice-app": "eyJzdWIiOiJnaXRodWI6OTEwMDAwMDAwMSIsIm5hbWUiOiJBbGljZSIsImltYWdlIjoiaHR0cHM6Ly9hdmF0YXJzLmV4YW1wbGUvdS8xIiwiaWF0IjoxNzkwMDAwMDAwLCJleHAiOjE3OTI1OTIwMDB9.dR139PNH1qjeMH_hU6a5M5Z7d0o53CEfbYp1JPAFkSk",
+    "bob": "eyJzdWIiOiJnaXRodWI6OTEwMDAwMDAwMiIsIm5hbWUiOiI8YiZvPlx1MjAyOGJcdTIwMjkg8J-YgCIsImltYWdlIjoiIiwiaWF0IjoxNzkwMDAwMDAwLCJleHAiOjE3OTI1OTIwMDB9.C7AGJldk7_KNH-mVg2nQA4uNVY3LG7pwrHAtP1xKr6Q"
+  }
+}

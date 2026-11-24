@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/sparklingstadt/typle-r/server/internal/session"
-	"github.com/sparklingstadt/typle-r/server/internal/store"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
+	"github.com/sparklingstadt/typle-backends/server/internal/store"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // The harness shared by the tests of this package: a handler for a fake or real store, signed-in requests to it, and

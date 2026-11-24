@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // Saving by revision (/api/workspace): a save names the revision it was made from, and is refused when the workspace

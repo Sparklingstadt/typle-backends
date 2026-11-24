@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // Practice records are kept in typle_records, one row each, rather than in their lists (docs/superpowers/specs/

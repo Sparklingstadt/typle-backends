@@ -3,7 +3,7 @@ package web
 import (
 	"net/url"
 
-	"github.com/sparklingstadt/typle-r/server/internal/session"
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
 )
 
 // LoginFromEnv reads the login settings as readLoginSettings of src/server/settings.ts does: AUTH_SECRET must not be

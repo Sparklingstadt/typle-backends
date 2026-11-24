@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sparklingstadt/typle-r/server/internal/session"
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
 )
 
 // Who a request is signed in as, and whether that login still counts, as src/server/account.ts tells it.

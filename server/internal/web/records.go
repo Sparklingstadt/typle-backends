@@ -7,9 +7,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/sparklingstadt/typle-r/server/internal/operation"
-	"github.com/sparklingstadt/typle-r/server/internal/store"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/operation"
+	"github.com/sparklingstadt/typle-backends/server/internal/store"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // recordAdded is the answer of POST /api/workspace/records: the workspace as saved, as GET answers it, with the record.

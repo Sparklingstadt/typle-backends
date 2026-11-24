@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sparklingstadt/typle-r/server/internal/operation"
-	"github.com/sparklingstadt/typle-r/server/internal/session"
-	"github.com/sparklingstadt/typle-r/server/internal/store"
+	"github.com/sparklingstadt/typle-backends/server/internal/operation"
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
+	"github.com/sparklingstadt/typle-backends/server/internal/store"
 )
 
 // Store is what the handlers need of the database.

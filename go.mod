@@ -1,4 +1,4 @@
-module github.com/sparklingstadt/typle-r
+module github.com/sparklingstadt/typle-backends
 
 go 1.25.0
 

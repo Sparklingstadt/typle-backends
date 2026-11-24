@@ -12,8 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sparklingstadt/typle-r/server/internal/store"
-	"github.com/sparklingstadt/typle-r/server/internal/web"
+	"github.com/sparklingstadt/typle-backends/server/internal/store"
+	"github.com/sparklingstadt/typle-backends/server/internal/web"
 )
 
 // BackendHeader is the header that picks the backend of a compared request, and that every answer of this one carries

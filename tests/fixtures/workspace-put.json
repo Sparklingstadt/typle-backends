@@ -1,0 +1,155 @@
+{
+  "about": "Bodies of PUT /api/workspace. tests/workspaceRequest.test.cjs runs them through validateWorkspaceRequest, and tests/serverWorkspaceBody.test.cjs through readWorkspaceChange (src/server/workspace.ts), which answers them as the Go backend (TestMatchesTypeScript, until v2.46.5) did: both must accept and refuse the same ones. lists and devices are how many a body that is accepted sends, -1 when it leaves them out.",
+  "cases": [
+    {
+      "name": "sharing fields dropped",
+      "body": "{\"revision\":1,\"lists\":[{\"id\":\"one\",\"name\":\"One\",\"createdAt\":\"2026-09-06\",\"words\":[{\"display\":\"a\",\"input\":\"a\",\"annotation\":\"\"}],\"records\":[],\"shared\":true,\"shareId\":\"x\"}]}",
+      "accepted": true,
+      "revision": 1,
+      "lists": 1,
+      "devices": -1
+    },
+    {
+      "name": "revision -1",
+      "body": "{\"revision\":-1,\"lists\":[]}",
+      "accepted": false
+    },
+    {
+      "name": "revision 1.5",
+      "body": "{\"revision\":1.5,\"lists\":[]}",
+      "accepted": false
+    },
+    {
+      "name": "revision string",
+      "body": "{\"revision\":\"0\",\"lists\":[]}",
+      "accepted": false
+    },
+    {
+      "name": "revision NaN, which JSON writes as null",
+      "body": "{\"revision\":null,\"lists\":[]}",
+      "accepted": false
+    },
+    {
+      "name": "revision missing",
+      "body": "{\"lists\":[]}",
+      "accepted": false
+    },
+    {
+      "name": "revision 2^53",
+      "body": "{\"revision\":9007199254740992,\"lists\":[]}",
+      "accepted": false
+    },
+    {
+      "name": "revision 2^53-1",
+      "body": "{\"revision\":9007199254740991,\"lists\":[]}",
+      "accepted": true,
+      "revision": 9007199254740991,
+      "lists": 0,
+      "devices": -1
+    },
+    {
+      "name": "revision 1.0",
+      "body": "{\"revision\":1.0,\"lists\":[]}",
+      "accepted": true,
+      "revision": 1,
+      "lists": 0,
+      "devices": -1
+    },
+    {
+      "name": "revision 1e2",
+      "body": "{\"revision\":1e2,\"lists\":[]}",
+      "accepted": true,
+      "revision": 100,
+      "lists": 0,
+      "devices": -1
+    },
+    {
+      "name": "revision -0",
+      "body": "{\"revision\":-0,\"lists\":[]}",
+      "accepted": true,
+      "revision": 0,
+      "lists": 0,
+      "devices": -1
+    },
+    {
+      "name": "name of 201 characters",
+      "body": "{\"revision\":0,\"lists\":[{\"id\":\"one\",\"name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"createdAt\":\"2026-09-06\",\"words\":[{\"display\":\"a\",\"input\":\"a\",\"annotation\":\"\"}],\"records\":[]}]}",
+      "accepted": false
+    },
+    {
+      "name": "name of 200 characters",
+      "body": "{\"revision\":0,\"lists\":[{\"id\":\"one\",\"name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"createdAt\":\"2026-09-06\",\"words\":[{\"display\":\"a\",\"input\":\"a\",\"annotation\":\"\"}],\"records\":[]}]}",
+      "accepted": true,
+      "revision": 0,
+      "lists": 1,
+      "devices": -1
+    },
+    {
+      "name": "profileId default",
+      "body": "{\"revision\":0,\"profileId\":\"default\",\"lists\":[{\"id\":\"one\",\"name\":\"One\",\"createdAt\":\"2026-09-06\",\"words\":[{\"display\":\"a\",\"input\":\"a\",\"annotation\":\"\"}],\"records\":[]}]}",
+      "accepted": false
+    },
+    {
+      "name": "profileId zh",
+      "body": "{\"revision\":1,\"profileId\":\"zh\",\"lists\":[]}",
+      "accepted": false
+    },
+    {
+      "name": "profiles with default",
+      "body": "{\"revision\":1,\"profileId\":\"default\",\"profiles\":[{\"id\":\"default\",\"name\":\"メイン\"}]}",
+      "accepted": false
+    },
+    {
+      "name": "devices",
+      "body": "{\"revision\":1,\"devices\":[{\"id\":\"mac\",\"name\":\" MacBook \",\"layout\":\"JIS\"}]}",
+      "accepted": true,
+      "revision": 1,
+      "lists": -1,
+      "devices": 1
+    },
+    {
+      "name": "duplicate devices",
+      "body": "{\"revision\":1,\"devices\":[{\"id\":\"mac\",\"name\":\"a\",\"layout\":\"\"},{\"id\":\"mac\",\"name\":\"b\",\"layout\":\"\"}]}",
+      "accepted": false
+    },
+    {
+      "name": "lists left out",
+      "body": "{\"revision\":2}",
+      "accepted": true,
+      "revision": 2,
+      "lists": -1,
+      "devices": -1
+    },
+    {
+      "name": "interests alone",
+      "body": "{\"revision\":2,\"interests\":[\"language\"]}",
+      "accepted": true,
+      "revision": 2,
+      "lists": -1,
+      "devices": -1
+    },
+    {
+      "name": "interests null",
+      "body": "{\"revision\":2,\"interests\":null}",
+      "accepted": true,
+      "revision": 2,
+      "lists": -1,
+      "devices": -1
+    },
+    {
+      "name": "interests duplicate",
+      "body": "{\"revision\":2,\"interests\":[\"a\",\"a\"]}",
+      "accepted": false
+    },
+    {
+      "name": "interests number",
+      "body": "{\"revision\":2,\"interests\":[\"a\",1]}",
+      "accepted": false
+    },
+    {
+      "name": "not an object",
+      "body": "[1]",
+      "accepted": false
+    }
+  ]
+}

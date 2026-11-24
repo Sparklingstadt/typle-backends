@@ -3,7 +3,7 @@ package store
 import (
 	"fmt"
 
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // A change, encoded as it is stored, before it is written.

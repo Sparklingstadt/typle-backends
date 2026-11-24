@@ -1,0 +1,82 @@
+{
+  "about": "What JavaScript's String.prototype.toLowerCase and trim give. tests/strings.test.cjs checks them against Node (the Go backend's lowerCase and trimJS gave the same until v2.46.11).",
+  "lowerCase": [
+    {
+      "input": "\u039f\u0394\u039f\u03a3",
+      "want": "\u03bf\u03b4\u03bf\u03c2",
+      "note": "a final capital sigma becomes a final sigma"
+    },
+    {
+      "input": "\u039f\u0394\u039f\u03a3 \u0391\u03a3",
+      "want": "\u03bf\u03b4\u03bf\u03c2 \u03b1\u03c2"
+    },
+    {
+      "input": "\u0391\u03a3.",
+      "want": "\u03b1\u03c2.",
+      "note": ". can follow a final sigma"
+    },
+    {
+      "input": "\u0391\u03a3'\u0392",
+      "want": "\u03b1\u03c3'\u03b2",
+      "note": "' inside a word does not end it"
+    },
+    {
+      "input": "\u0391\u03a3:\u0392",
+      "want": "\u03b1\u03c3:\u03b2"
+    },
+    {
+      "input": "\u0391\u03a3\u0301",
+      "want": "\u03b1\u03c2\u0301",
+      "note": "a combining accent is ignored"
+    },
+    {
+      "input": "\u0391\u03a31",
+      "want": "\u03b1\u03c21",
+      "note": "a digit is not a letter"
+    },
+    {
+      "input": "1\u03a3",
+      "want": "1\u03c3",
+      "note": "nothing cased before it"
+    },
+    {
+      "input": "\u03a3",
+      "want": "\u03c3"
+    },
+    {
+      "input": "A\u02bc\u00ad\u03a3",
+      "want": "a\u02bc\u00ad\u03c2",
+      "note": "modifier letters and soft hyphens are ignored"
+    },
+    {
+      "input": "\u0130stanbul",
+      "want": "i\u0307stanbul"
+    },
+    {
+      "input": "ABC",
+      "want": "abc"
+    }
+  ],
+  "trim": [
+    {
+      "input": " a ",
+      "want": "a"
+    },
+    {
+      "input": "\ufeffa\ufeff",
+      "want": "a"
+    },
+    {
+      "input": "\u0085a\u0085",
+      "want": "\u0085a\u0085"
+    },
+    {
+      "input": "\u3000a ",
+      "want": "a"
+    },
+    {
+      "input": "\t\u000b\f\r\n a",
+      "want": "a"
+    }
+  ]
+}

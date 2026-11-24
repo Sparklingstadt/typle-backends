@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sparklingstadt/typle-r/server/internal/serve"
-	"github.com/sparklingstadt/typle-r/server/vercel"
+	"github.com/sparklingstadt/typle-backends/server/internal/serve"
+	"github.com/sparklingstadt/typle-backends/server/vercel"
 )
 
 func main() {

@@ -6,7 +6,7 @@ package operation
 import (
 	"context"
 
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // Writer changes an account's workspace and saves it, as store.Store.Modify does: in one transaction that holds the

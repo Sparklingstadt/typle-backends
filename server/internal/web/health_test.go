@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sparklingstadt/typle-r/server/internal/store"
-	"github.com/sparklingstadt/typle-r/server/internal/workspace"
+	"github.com/sparklingstadt/typle-backends/server/internal/store"
+	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
 
 // fakeStore is a database whose every call returns err (nil: it answers, with nothing in it).

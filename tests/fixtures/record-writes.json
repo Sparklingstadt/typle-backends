@@ -1,0 +1,2172 @@
+{
+  "comment": "POST and DELETE /api/workspace/records of the Go backend (recordAdd and recordDelete with a real database), step after step from each setup. After each step: the status, the error key, the record answered, the row, the rows of typle_records ([list_id, record_id, position, at in ms, data]) and the pack ids of typle_shared_packs (setup.shares and shares; not checked since v2.49.0, which removed sharing). accountId is the owner's. src/server must leave the same (tests/apiRecords.test.cjs).",
+  "scenarios": [
+    {
+      "name": "records added, sent again and deleted",
+      "setup": {
+        "row": {
+          "lists": [
+            {
+              "id": "l1",
+              "name": "l1",
+              "packId": "pack-a",
+              "words": [
+                {
+                  "display": "ab",
+                  "input": "ab",
+                  "annotation": ""
+                },
+                {
+                  "display": "cd",
+                  "input": "cd",
+                  "annotation": ""
+                }
+              ],
+              "records": [],
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            },
+            {
+              "id": "l2",
+              "name": "l2",
+              "packId": "pack-b",
+              "words": [
+                {
+                  "display": "ab",
+                  "input": "ab",
+                  "annotation": ""
+                },
+                {
+                  "display": "cd",
+                  "input": "cd",
+                  "annotation": ""
+                }
+              ],
+              "records": [],
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            }
+          ],
+          "packs": [
+            {
+              "id": "pack-a",
+              "name": "pack-a",
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            },
+            {
+              "id": "pack-b",
+              "name": "pack-b",
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            }
+          ],
+          "devices": [
+            {
+              "id": "mac",
+              "name": "MacBook Air",
+              "layout": "JIS"
+            }
+          ],
+          "interests": null,
+          "revision": 3,
+          "split": true
+        },
+        "shares": []
+      },
+      "steps": [
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l1",
+            "record": {
+              "id": "run-1",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2,
+              "deviceId": "mac"
+            }
+          },
+          "status": 201,
+          "key": "",
+          "record": {
+            "id": "run-1",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 2,
+            "device": {
+              "id": "mac",
+              "name": "MacBook Air",
+              "layout": "JIS"
+            }
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 4,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "mac",
+                  "name": "MacBook Air",
+                  "layout": "JIS"
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l1",
+            "record": {
+              "id": "run-1",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2,
+              "deviceId": "mac"
+            }
+          },
+          "status": 200,
+          "key": "",
+          "record": {
+            "id": "run-1",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 2,
+            "device": {
+              "id": "mac",
+              "name": "MacBook Air",
+              "layout": "JIS"
+            }
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 4,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "mac",
+                  "name": "MacBook Air",
+                  "layout": "JIS"
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l1",
+            "record": {
+              "id": "run-2",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2,
+              "mode": "recall",
+              "missed": [
+                {
+                  "word": "ab",
+                  "count": 2
+                }
+              ]
+            }
+          },
+          "status": 201,
+          "key": "",
+          "record": {
+            "id": "run-2",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 2,
+            "mode": "recall",
+            "missed": [
+              {
+                "word": "ab",
+                "count": 2
+              }
+            ]
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 5,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "mac",
+                  "name": "MacBook Air",
+                  "layout": "JIS"
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l1",
+              "run-2",
+              1,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l2",
+            "record": {
+              "id": "run-3",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2,
+              "device": {
+                "id": "x",
+                "name": "X",
+                "layout": ""
+              }
+            }
+          },
+          "status": 201,
+          "key": "",
+          "record": {
+            "id": "run-3",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 2,
+            "device": {
+              "id": "x",
+              "name": "X",
+              "layout": ""
+            }
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 6,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "mac",
+                  "name": "MacBook Air",
+                  "layout": "JIS"
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l1",
+              "run-2",
+              1,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l2",
+            "record": {
+              "id": "run-4",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": null,
+              "device": null,
+              "deviceId": null
+            }
+          },
+          "status": 201,
+          "key": "",
+          "record": {
+            "id": "run-4",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 2
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 7,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "mac",
+                  "name": "MacBook Air",
+                  "layout": "JIS"
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l1",
+              "run-2",
+              1,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-4",
+              1,
+              1790935200000,
+              {
+                "id": "run-4",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l2",
+            "record": {
+              "id": "run-5",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2,
+              "foo": 1
+            }
+          },
+          "status": 400,
+          "key": "invalidRecord",
+          "record": null,
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 7,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "mac",
+                  "name": "MacBook Air",
+                  "layout": "JIS"
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l1",
+              "run-2",
+              1,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-4",
+              1,
+              1790935200000,
+              {
+                "id": "run-4",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "add",
+          "body": {
+            "listId": "nope",
+            "record": {
+              "id": "run-6",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2
+            }
+          },
+          "status": 404,
+          "key": "recordListDeleted",
+          "record": null,
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 7,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "mac",
+                  "name": "MacBook Air",
+                  "layout": "JIS"
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l1",
+              "run-2",
+              1,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-4",
+              1,
+              1790935200000,
+              {
+                "id": "run-4",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "delete",
+          "body": {
+            "listId": "l1",
+            "recordId": "run-1"
+          },
+          "status": 200,
+          "key": "",
+          "record": null,
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 8,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-2",
+              0,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-4",
+              1,
+              1790935200000,
+              {
+                "id": "run-4",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "delete",
+          "body": {
+            "listId": "l1",
+            "recordId": "run-1"
+          },
+          "status": 200,
+          "key": "",
+          "record": null,
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 8,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-2",
+              0,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-4",
+              1,
+              1790935200000,
+              {
+                "id": "run-4",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "delete",
+          "body": {
+            "listId": "nope",
+            "recordId": "run-2"
+          },
+          "status": 200,
+          "key": "",
+          "record": null,
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 8,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-2",
+              0,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-4",
+              1,
+              1790935200000,
+              {
+                "id": "run-4",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l1",
+            "record": {
+              "id": "run-7",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2,
+              "mode": null
+            }
+          },
+          "status": 400,
+          "key": "invalidRecord",
+          "record": null,
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "l2",
+                "name": "l2",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-b",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              },
+              {
+                "id": "pack-b",
+                "name": "pack-b",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 8,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-2",
+              0,
+              1790935200000,
+              {
+                "id": "run-2",
+                "date": "2026-10-02T10:00:00.000Z",
+                "mode": "recall",
+                "time": 2.5,
+                "missed": [
+                  {
+                    "word": "ab",
+                    "count": 2
+                  }
+                ],
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-3",
+              0,
+              1790935200000,
+              {
+                "id": "run-3",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "device": {
+                  "id": "x",
+                  "name": "X",
+                  "layout": ""
+                },
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ],
+            [
+              "l2",
+              "run-4",
+              1,
+              1790935200000,
+              {
+                "id": "run-4",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        }
+      ]
+    },
+    {
+      "name": "an old row whose records are still in its lists",
+      "setup": {
+        "row": {
+          "lists": [
+            {
+              "id": "l1",
+              "name": "l1",
+              "packId": "pack-a",
+              "words": [
+                {
+                  "display": "ab",
+                  "input": "ab",
+                  "annotation": ""
+                },
+                {
+                  "display": "cd",
+                  "input": "cd",
+                  "annotation": ""
+                }
+              ],
+              "records": [
+                {
+                  "time": 1,
+                  "date": "2026-09-07T00:00:00.000Z"
+                },
+                {
+                  "id": "own",
+                  "time": 2,
+                  "date": "2026-09-07T00:00:00.000Z",
+                  "mistakes": 0
+                }
+              ],
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            }
+          ],
+          "packs": [
+            {
+              "id": "pack-a",
+              "name": "pack-a",
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            }
+          ],
+          "devices": [
+            {
+              "id": "mac",
+              "name": "MacBook Air",
+              "layout": "JIS"
+            }
+          ],
+          "interests": null,
+          "revision": 3,
+          "split": false
+        },
+        "shares": []
+      },
+      "steps": [
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l1",
+            "record": {
+              "id": "run-1",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2
+            }
+          },
+          "status": 201,
+          "key": "",
+          "record": {
+            "id": "run-1",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 2
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 4,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "legacy-d6842d514f2b89309445",
+              0,
+              1788739200000,
+              {
+                "id": "legacy-d6842d514f2b89309445",
+                "date": "2026-09-07T00:00:00.000Z",
+                "time": 1
+              }
+            ],
+            [
+              "l1",
+              "own",
+              1,
+              1788739200000,
+              {
+                "id": "own",
+                "date": "2026-09-07T00:00:00.000Z",
+                "time": 2,
+                "mistakes": 0
+              }
+            ],
+            [
+              "l1",
+              "run-1",
+              2,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        },
+        {
+          "kind": "delete",
+          "body": {
+            "listId": "l1",
+            "recordId": "own"
+          },
+          "status": 200,
+          "key": "",
+          "record": null,
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 5,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "legacy-d6842d514f2b89309445",
+              0,
+              1788739200000,
+              {
+                "id": "legacy-d6842d514f2b89309445",
+                "date": "2026-09-07T00:00:00.000Z",
+                "time": 1
+              }
+            ],
+            [
+              "l1",
+              "run-1",
+              1,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": []
+        }
+      ]
+    },
+    {
+      "name": "a record of a followed official pack",
+      "setup": {
+        "row": {
+          "lists": [
+            {
+              "id": "lf",
+              "name": "macOSターミナル（zsh）コマンド",
+              "packId": "pack-f",
+              "words": [],
+              "records": [],
+              "createdAt": "2026-09-07T00:00:00.000Z",
+              "origin": {
+                "listId": "8f3cf116-1f9f-4579-a071-e600094b104d"
+              }
+            }
+          ],
+          "packs": [
+            {
+              "id": "pack-f",
+              "name": "macOSターミナル（zsh）コマンド",
+              "createdAt": "2026-09-07T00:00:00.000Z",
+              "origin": {
+                "catalogId": "pack-8f3cf116-1f9f-4579-a071-e600094b104d",
+                "version": 1,
+                "followed": true
+              }
+            }
+          ],
+          "devices": [
+            {
+              "id": "mac",
+              "name": "MacBook Air",
+              "layout": "JIS"
+            }
+          ],
+          "interests": null,
+          "revision": 3,
+          "split": true
+        },
+        "shares": []
+      },
+      "steps": [
+        {
+          "kind": "add",
+          "body": {
+            "listId": "lf",
+            "record": {
+              "id": "run-1",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": null
+            }
+          },
+          "status": 201,
+          "key": "",
+          "record": {
+            "id": "run-1",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 90
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "lf",
+                "name": "macOSターミナル（zsh）コマンド",
+                "words": [],
+                "origin": {
+                  "listId": "8f3cf116-1f9f-4579-a071-e600094b104d"
+                },
+                "packId": "pack-f",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-f",
+                "name": "macOSターミナル（zsh）コマンド",
+                "tags": [
+                  "macOS",
+                  "シェル"
+                ],
+                "origin": {
+                  "version": 1,
+                  "followed": true,
+                  "catalogId": "pack-8f3cf116-1f9f-4579-a071-e600094b104d"
+                },
+                "category": "プログラミング",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 4,
+            "interests": null
+          },
+          "records": [
+            [
+              "lf",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 90
+              }
+            ]
+          ],
+          "shares": []
+        }
+      ]
+    },
+    {
+      "name": "an account that has saved nothing",
+      "setup": {
+        "row": null,
+        "shares": []
+      },
+      "steps": [
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l1",
+            "record": {
+              "id": "run-1",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2
+            }
+          },
+          "status": 404,
+          "key": "recordListDeleted",
+          "record": null,
+          "row": null,
+          "records": [],
+          "shares": []
+        },
+        {
+          "kind": "delete",
+          "body": {
+            "listId": "l1",
+            "recordId": "run-1"
+          },
+          "status": 503,
+          "key": "workspaceSaveFailed",
+          "record": null,
+          "row": null,
+          "records": [],
+          "shares": []
+        }
+      ]
+    },
+    {
+      "name": "the links of packs that are gone are deleted with a change",
+      "setup": {
+        "row": {
+          "lists": [
+            {
+              "id": "l1",
+              "name": "l1",
+              "packId": "pack-a",
+              "words": [
+                {
+                  "display": "ab",
+                  "input": "ab",
+                  "annotation": ""
+                },
+                {
+                  "display": "cd",
+                  "input": "cd",
+                  "annotation": ""
+                }
+              ],
+              "records": [],
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            }
+          ],
+          "packs": [
+            {
+              "id": "pack-a",
+              "name": "pack-a",
+              "createdAt": "2026-09-07T00:00:00.000Z"
+            }
+          ],
+          "devices": [
+            {
+              "id": "mac",
+              "name": "MacBook Air",
+              "layout": "JIS"
+            }
+          ],
+          "interests": null,
+          "revision": 3,
+          "split": true
+        },
+        "shares": [
+          "pack-a",
+          "pack-old"
+        ]
+      },
+      "steps": [
+        {
+          "kind": "add",
+          "body": {
+            "listId": "l1",
+            "record": {
+              "id": "run-1",
+              "time": 2.5,
+              "date": "2026-10-02T10:00:00.000Z",
+              "mistakes": 1,
+              "accuracy": 95.5,
+              "wordCount": 2
+            }
+          },
+          "status": 201,
+          "key": "",
+          "record": {
+            "id": "run-1",
+            "time": 2.5,
+            "date": "2026-10-02T10:00:00.000Z",
+            "mistakes": 1,
+            "accuracy": 95.5,
+            "wordCount": 2
+          },
+          "row": {
+            "lists": [
+              {
+                "id": "l1",
+                "name": "l1",
+                "words": [
+                  {
+                    "input": "ab",
+                    "display": "ab",
+                    "annotation": ""
+                  },
+                  {
+                    "input": "cd",
+                    "display": "cd",
+                    "annotation": ""
+                  }
+                ],
+                "packId": "pack-a",
+                "records": [],
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "packs": [
+              {
+                "id": "pack-a",
+                "name": "pack-a",
+                "createdAt": "2026-09-07T00:00:00.000Z"
+              }
+            ],
+            "split": true,
+            "devices": [
+              {
+                "id": "mac",
+                "name": "MacBook Air",
+                "layout": "JIS"
+              }
+            ],
+            "revision": 4,
+            "interests": null
+          },
+          "records": [
+            [
+              "l1",
+              "run-1",
+              0,
+              1790935200000,
+              {
+                "id": "run-1",
+                "date": "2026-10-02T10:00:00.000Z",
+                "time": 2.5,
+                "accuracy": 95.5,
+                "mistakes": 1,
+                "wordCount": 2
+              }
+            ]
+          ],
+          "shares": [
+            "pack-a"
+          ]
+        }
+      ]
+    }
+  ]
+}
