@@ -8,16 +8,15 @@ import (
 	"github.com/sparklingstadt/typle-backends/server/internal/session"
 )
 
-// Who a request is signed in as, and whether that login still counts, as src/server/account.ts tells it.
+// Who a request is signed in as, as signedIn of src/server/account.ts tells it: the Better Auth session its cookie names.
 
-// fromApp reports whether the request is an app's (iPad, Mac): it carries an Authorization header that is not empty,
-// which is then all it is judged by.
-func fromApp(r *http.Request) bool {
-	return header(r, "Authorization") != ""
-}
+// demoAccountID is the shared demo account's ID (src/server/demoLogin.ts). Its sessions stop working when its login is
+// turned off (DEMO_LOGIN), not only new logins.
+const demoAccountID = "demo:shared"
 
-// cookieValue is cookieValue of src/server/account.ts: the value of the first cookie named name in the Cookie header,
-// with quotes around it dropped.
+// cookieValue is the value of the first cookie named name in the Cookie header, as better-call's parseCookies reads it:
+// the first pair with that name wins, and a value that starts with a double quote loses its first and last character.
+// The value is not decoded here (session.Token does).
 func cookieValue(r *http.Request, name string) (string, bool) {
 	for _, part := range strings.Split(header(r, "Cookie"), ";") {
 		key, value, ok := strings.Cut(part, "=")
@@ -25,41 +24,37 @@ func cookieValue(r *http.Request, name string) (string, bool) {
 			continue
 		}
 		value = strings.TrimSpace(value)
-		if len(value) >= 2 && strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`) {
-			value = value[1 : len(value)-1]
+		if strings.HasPrefix(value, `"`) {
+			value = value[1:max(1, len(value)-1)]
 		}
 		return value, true
 	}
 	return "", false
 }
 
-// owner is currentUser: from an app's bearer token when the request has an Authorization header, and otherwise from
-// the login cookie. A request with both is judged by the token, so a cookie never stands in for a token that is refused.
-func (s *server) owner(r *http.Request) (session.Session, bool) {
-	if authorization := header(r, "Authorization"); authorization != "" {
-		token, _ := strings.CutPrefix(authorization, "Bearer ")
-		if token == authorization || token == "" || strings.ContainsAny(token, " \t") {
-			return session.Session{}, false
-		}
-		return s.config.Keys.OpenApp(token, s.now())
-	}
-	value, ok := cookieValue(r, session.CookieName(s.secure()))
-	if !ok {
-		return session.Session{}, false
-	}
-	return s.config.Keys.Open(value, s.now())
-}
-
-// errNoSessions is a server set up without a database to keep the revocations in.
-var errNoSessions = errors.New("no database to check the session against")
+var (
+	// errNoSecret is a server set up without BETTER_AUTH_SECRET, with which Better Auth cannot start in typle-r either.
+	errNoSecret = errors.New("BETTER_AUTH_SECRET is not set")
+	// errNoSessions is a server set up without a database to read the sessions from.
+	errNoSessions = errors.New("no database to read the session from")
+)
 
 // signedIn is signedIn of src/server/account.ts, for a request that reads or changes the account's data: loginRequired
-// without a session or with a revoked one (whose cookie is then removed, unless the request is an app's), and
-// databaseUnavailable when the revocations cannot be read, as the data cannot be either. It answers the request unless
-// it returns true.
+// without a session cookie, with one whose signature does not check out, or with one of no session or an expired one;
+// databaseUnavailable when the session cannot be read (also without the secret, as Better Auth then fails to start), as
+// the data cannot be either. No cookie is removed: typle-r reads the session through auth.api.getSession, whose cookies
+// do not reach the answer. The session row is always read (typle-r's cookie cache may answer for up to 5 minutes
+// without it), so a session deleted by signing out of every device is refused at once. It answers the request unless it
+// returns true.
 func (s *server) signedIn(w http.ResponseWriter, r *http.Request) (session.Session, bool) {
-	user, ok := s.owner(r)
-	if !ok {
+	if s.config.Secret == "" {
+		s.report(r, errNoSecret, "session.check")
+		refuse(w, http.StatusServiceUnavailable, "databaseUnavailable")
+		return session.Session{}, false
+	}
+	value, ok := cookieValue(r, session.CookieName(s.secure()))
+	token, signed := session.Token(value, s.config.Secret)
+	if !ok || !signed {
 		refuse(w, http.StatusUnauthorized, "loginRequired")
 		return session.Session{}, false
 	}
@@ -68,27 +63,15 @@ func (s *server) signedIn(w http.ResponseWriter, r *http.Request) (session.Sessi
 		refuse(w, http.StatusServiceUnavailable, "databaseUnavailable")
 		return session.Session{}, false
 	}
-	revokedAt, err := s.config.Store.SessionsRevokedAt(r.Context(), user.Sub)
+	user, found, err := s.config.Store.SessionUser(r.Context(), token, s.now())
 	if err != nil {
 		s.report(r, err, "session.check")
 		refuse(w, http.StatusServiceUnavailable, "databaseUnavailable")
 		return session.Session{}, false
 	}
-	if user.RevokedBy(revokedAt) {
-		if !fromApp(r) {
-			s.dropCookie(w)
-		}
+	if !found || (user.Sub == demoAccountID && !s.config.DemoLogin) {
 		refuse(w, http.StatusUnauthorized, "loginRequired")
 		return session.Session{}, false
 	}
 	return user, true
-}
-
-// dropCookie removes the login cookie as dropCookie of src/server/account.ts writes it.
-func (s *server) dropCookie(w http.ResponseWriter) {
-	secure := ""
-	if s.secure() {
-		secure = "; Secure"
-	}
-	w.Header().Add("Set-Cookie", session.CookieName(s.secure())+"=; Path=/; Max-Age=0; HttpOnly"+secure+"; SameSite=Lax")
 }

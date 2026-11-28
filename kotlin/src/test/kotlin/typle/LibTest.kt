@@ -185,47 +185,61 @@ class LibTest {
         }
     }
 
+    // Values better-call's signCookieValue (better-call 1.x in typle-r v2.68.1) signed with this secret.
+    private val fixtureSecret = "typle-fixture-secret"
+    private val signed = listOf(
+        "Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHj" to "Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHj.HaFpK%2BRyVHSMXc5MbMT65Lkh4SdoCpRqCHG866eQx2w%3D",
+        "a.b+c/d=e" to "a.b%2Bc%2Fd%3De.QgtT95hjCvQfprQC%2BUtI5LsqCC549MK9KWYHFNPmUuE%3D",
+    )
+
     @Test
-    fun `the Go backend's cookies and app tokens open as they did there (sessions-json)`() {
-        val fixture = Fixtures.obj("sessions.json")
-        val settings = LoginSettings.read(mapOf("AUTH_SECRET" to fixture["secret"] as String, "AUTH_URL" to "https://typle.example"))!!
-        val now = fixture["now"] as Double
-        fun check(entries: Any?, key: ByteArray) {
-            for (entry in entries as JsArray) {
-                val value = prop(entry, "value") as String
-                val session = Sessions.open(key, value, now)
-                val expected = prop(entry, "session")
-                if (expected == null) assertNull(session, value)
-                else assertJsonEquals(expected, mapOf("sub" to session!!.sub, "name" to session.name, "image" to session.image,
-                    "iat" to session.issuedAt, "exp" to session.expires), value)
-            }
-        }
-        check(fixture["cookies"], settings.sessionKey)
-        check(fixture["tokens"], settings.appKey)
-        val cookie = prop((fixture["cookies"] as JsArray)[0], "value") as String
-        assertNull(Sessions.open(settings.appKey, cookie, now))
-        val other = LoginSettings.read(mapOf("AUTH_SECRET" to "another-secret", "AUTH_URL" to "https://typle.example"))!!
-        assertNull(Sessions.open(other.sessionKey, cookie, now))
-        val (payload, signature) = cookie.split('.')
-        val flip = { t: String -> t.dropLast(1) + (if (t.last() == 'A') "B" else "A") }
-        for (changed in listOf("$payload.${flip(signature)}", "${flip(payload)}.$signature", "$payload.$signature=", "$payload=.$signature",
-            payload, "", ".", "$payload.$signature.x", "$payload.${signature.dropLast(1)}")) {
-            assertNull(Sessions.open(settings.sessionKey, changed, now), changed)
-        }
-        assertEquals("__Host-typle-session", settings.cookieName)
-        assertEquals("typle-session", LoginSettings.read(mapOf("AUTH_SECRET" to "s", "AUTH_URL" to "http://127.0.0.1:3101"))!!.cookieName)
+    fun `a session cookie is signed as better-call signs it`() {
+        for ((token, value) in signed) assertEquals(value, Sessions.sign(token, fixtureSecret), token)
     }
 
     @Test
-    fun `the logins the Go backend sealed open (auth-answers-json)`() {
-        val auth = Fixtures.obj("auth-answers.json")
-        val settings = LoginSettings.read(mapOf("AUTH_SECRET" to auth["secret"] as String, "AUTH_URL" to "https://typle.example"))!!
-        val values = auth["values"] as JsObject
-        val now = auth["now"] as Double
-        assertEquals("github:9100000001", Sessions.open(settings.sessionKey, values["alice"] as String, now)?.sub)
-        assertEquals("github:9100000001", Sessions.open(settings.appKey, values["alice-app"] as String, now)?.sub)
-        assertEquals("github:9100000002", Sessions.open(settings.sessionKey, values["bob"] as String, now)?.sub)
-        assertNull(Sessions.open(settings.sessionKey, values["alice-app"] as String, now))
+    fun `the token of a session cookie is read as better-call reads it`() {
+        for ((token, value) in signed) assertEquals(token, Sessions.token(value, fixtureSecret), value)
+        // The value as it is, not URL-encoded, opens too: decoding leaves it as it is.
+        assertEquals(signed[0].first, Sessions.token("Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHj.HaFpK+RyVHSMXc5MbMT65Lkh4SdoCpRqCHG866eQx2w=", fixtureSecret))
+        // A value that is not valid percent-encoding is read as it is (tryDecode).
+        assertNull(Sessions.token("%zz." + signed[0].second, fixtureSecret))
+    }
+
+    @Test
+    fun `a session cookie that is not signed with the secret is no one`() {
+        val good = signed[0].second
+        for ((name, value) in mapOf(
+            "empty" to "",
+            "no dot" to "Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHj",
+            "dot first" to ".HaFpK%2BRyVHSMXc5MbMT65Lkh4SdoCpRqCHG866eQx2w%3D",
+            "other token" to "Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHk.HaFpK%2BRyVHSMXc5MbMT65Lkh4SdoCpRqCHG866eQx2w%3D",
+            "short" to "Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHj.HaFpK%2BRyVHSMXc5MbMT65Lkh4SdoCpRqCHG866eQx2w",
+            "no padding end" to "Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHj.HaFpK%2BRyVHSMXc5MbMT65Lkh4SdoCpRqCHG866eQx2wA",
+            "not base64" to "Zq3kV8wXo1pN6tYb2cR9sL4mA7dF0gHj.HaFpK-RyVHSMXc5MbMT65Lkh4SdoCpRqCHG866eQx2w%3D",
+        )) {
+            assertNull(Sessions.token(value, fixtureSecret), name)
+        }
+        assertNull(Sessions.token(good, "another secret"))
+        assertNull(Sessions.token(good, ""))
+    }
+
+    @Test
+    fun `the session cookie is better-auth's, __Secure- over HTTPS`() {
+        assertEquals("better-auth.session_token", Sessions.cookieName(false))
+        assertEquals("__Secure-better-auth.session_token", Sessions.cookieName(true))
+        val https = LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to " s \n", "AUTH_URL" to "https://typle.example/path"))!!
+        assertEquals("__Secure-better-auth.session_token", https.cookieName)
+        assertEquals("https://typle.example", https.origin)
+        assertEquals("s", https.secret)
+        assertEquals(false, https.demoLogin)
+        val http = LoginSettings.read(mapOf("AUTH_URL" to "http://127.0.0.1:3101", "DEMO_LOGIN" to "1"))!!
+        assertEquals("better-auth.session_token", http.cookieName)
+        assertEquals("", http.secret)
+        assertEquals(true, http.demoLogin)
+        assertEquals(false, LoginSettings.read(mapOf("AUTH_URL" to "http://x", "DEMO_LOGIN" to "true"))!!.demoLogin)
+        assertNull(LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to "s", "AUTH_URL" to "ftp://typle.example")))
+        assertNull(LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to "s")))
     }
 
     @Test

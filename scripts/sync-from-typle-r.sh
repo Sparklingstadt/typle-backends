@@ -14,5 +14,8 @@ cp "$src"/src/lib/packs/commands/*.json "$root/src/lib/packs/commands/"
 cp "$src/src/messages/ja/format.json" "$root/src/messages/ja/"
 cp "$src/docs/api/workspace-records.openapi.json" "$root/docs/api/"
 cp "$src/scripts/records-rollback.sql" "$root/scripts/"
+# Go embeds its own copy of the official word lists.
+cp "$root"/src/lib/packs/samples.json "$root"/src/lib/packs/countries.json "$root/server/internal/workspace/packs/"
+cp "$root"/src/lib/packs/commands/*.json "$root/server/internal/workspace/packs/commands/"
 
 echo "Copied from typle-r $(git -C "$src" rev-parse --short HEAD). Run the tests, and name this commit in README.md."

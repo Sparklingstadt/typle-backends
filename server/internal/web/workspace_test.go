@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,19 +30,15 @@ func TestGetLoginRequired(t *testing.T) {
 		last = "B"
 	}
 	tampered.Value = tampered.Value[:len(tampered.Value)-1] + last
-	other, err := session.NewKeys("another secret")
-	if err != nil {
-		t.Fatal(err)
-	}
 	cases := map[string]func(*http.Request){
-		"no cookie":      func(*http.Request) {},
-		"auth.js cookie": func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "authjs.session-token", Value: "x"}) },
-		"tampered":       func(r *http.Request) { r.AddCookie(tampered) },
-		"other secret": func(r *http.Request) {
-			r.AddCookie(&http.Cookie{Name: "typle-session", Value: other.Seal(session.New(testOwner, "", "", time.Now()))})
+		"no cookie":           func(*http.Request) {},
+		"auth.js cookie":      func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "authjs.session-token", Value: "x"}) },
+		"tampered":            func(r *http.Request) { r.AddCookie(tampered) },
+		"other secret":        func(r *http.Request) { r.AddCookie(sessionCookie(testOwner, "another secret", false)) },
+		"__Secure- over http": func(r *http.Request) { r.AddCookie(h.cookie(testOwner, true)) },
+		"no such session": func(r *http.Request) {
+			r.AddCookie(&http.Cookie{Name: session.CookieName(false), Value: session.Sign("gone", testSecret)})
 		},
-		"__Host- over http":  func(r *http.Request) { r.AddCookie(h.cookie(testOwner, true)) },
-		"not a GitHub login": func(r *http.Request) { r.AddCookie(h.cookie("google:1", false)) },
 	}
 	for name, add := range cases {
 		t.Run(name, func(t *testing.T) { expectError(t, h.get("", add), http.StatusUnauthorized, "loginRequired") })
@@ -341,7 +338,7 @@ func TestPutFlow(t *testing.T) {
 		t.Fatalf("lists = %s, devices = %s", fields["lists"], fields["devices"])
 	}
 	// Another account's workspace is not this one's.
-	if other := h.get(owner + "0"); string(decodeBody(t, other)["revision"]) != "0" {
+	if other := h.get(realAccount(t)); string(decodeBody(t, other)["revision"]) != "0" {
 		t.Fatalf("other account: %s", other.Body)
 	}
 }
@@ -432,32 +429,39 @@ func TestPutBodyFails(t *testing.T) {
 
 // Without a Report the failure is only logged.
 func TestDefaultReport(t *testing.T) {
-	keys, _ := session.NewKeys("test secret")
 	parsed, _ := url.Parse(testBase)
-	h := New(Config{Store: &fakeWorkspaces{fakeStore: fakeStore{err: errors.New("down")}}, Keys: keys, BaseURL: parsed})
+	h := New(Config{Store: &fakeWorkspaces{fakeStore: fakeStore{err: errors.New("down")}}, Secret: testSecret, BaseURL: parsed})
 	r := httptest.NewRequest(http.MethodGet, "/api/workspace", nil)
-	r.AddCookie(&http.Cookie{Name: "typle-session", Value: keys.Seal(session.New(testOwner, "", "", time.Now()))})
+	r.AddCookie(sessionCookie(testOwner, testSecret, false))
 	response := httptest.NewRecorder()
 	h.ServeHTTP(response, r)
 	expectError(t, response, http.StatusServiceUnavailable, "databaseUnavailable")
 }
 
-// A fixed clock decides when a session has expired.
+// The clock is what the session is checked against: the store is asked whether it has expired at Now.
 func TestNowIsUsed(t *testing.T) {
-	keys, _ := session.NewKeys("test secret")
 	parsed, _ := url.Parse(testBase)
-	issued := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	cookie := &http.Cookie{Name: "typle-session", Value: keys.Seal(session.New(testOwner, "", "", issued))}
-	for now, status := range map[time.Time]int{issued.Add(time.Hour): http.StatusOK, issued.Add(session.MaxAge + time.Hour): http.StatusUnauthorized} {
-		h := New(Config{Store: &fakeWorkspaces{}, Keys: keys, BaseURL: parsed, Now: func() time.Time { return now }})
-		r := httptest.NewRequest(http.MethodGet, "/api/workspace", nil)
-		r.AddCookie(cookie)
-		response := httptest.NewRecorder()
-		h.ServeHTTP(response, r)
-		if response.Code != status {
-			t.Errorf("at %v: response = %d %s", now, response.Code, response.Body)
-		}
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	clock := &clockStore{fakeWorkspaces: &fakeWorkspaces{}}
+	h := New(Config{Store: clock, Secret: testSecret, BaseURL: parsed, Now: func() time.Time { return now }})
+	r := httptest.NewRequest(http.MethodGet, "/api/workspace", nil)
+	r.AddCookie(sessionCookie(testOwner, testSecret, false))
+	response := httptest.NewRecorder()
+	h.ServeHTTP(response, r)
+	if response.Code != http.StatusOK || !clock.at.Equal(now) {
+		t.Fatalf("response = %d, asked at %v", response.Code, clock.at)
 	}
+}
+
+// clockStore keeps the time a session was looked up at.
+type clockStore struct {
+	*fakeWorkspaces
+	at time.Time
+}
+
+func (c *clockStore) SessionUser(ctx context.Context, token string, now time.Time) (session.Session, bool, error) {
+	c.at = now
+	return c.fakeWorkspaces.SessionUser(ctx, token, now)
 }
 
 // putCase is a body of PUT /api/workspace from tests/fixtures/workspace-put.json, which tests/workspaceRequest.test.cjs

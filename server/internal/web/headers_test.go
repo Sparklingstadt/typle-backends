@@ -36,7 +36,7 @@ func TestHeadersUniform(t *testing.T) {
 		"method not allowed":   get(t, h.handler, http.MethodDelete, "/api/workspace"),
 		"records refused":      get(t, h.handler, http.MethodPost, "/api/workspace/records"),
 		"auth unavailable":     get(t, New(Config{Store: fakeStore{}}), http.MethodGet, "/api/workspace"),
-		"database missing":     get(t, New(Config{Keys: h.keys, BaseURL: mustURL(t, testBase)}), http.MethodGet, "/api/workspace"),
+		"database missing":     get(t, New(Config{Secret: testSecret, BaseURL: mustURL(t, testBase)}), http.MethodGet, "/api/workspace"),
 	}
 	for name, response := range responses {
 		checkSecurityHeaders(t, name, response.Header())

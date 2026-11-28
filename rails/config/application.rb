@@ -15,7 +15,7 @@ module TypleRails
     config.load_defaults 8.1
     config.api_only = true
 
-    # Rails' session key is never used (the login cookie is Auth.js's), so a random one does when none is given.
+    # Rails' session key is never used (the login cookie is Better Auth's), so a random one does when none is given.
     config.secret_key_base = ENV["SECRET_KEY_BASE"].presence || SecureRandom.hex(64)
 
     # Nothing Next.js does not do either: no ETag (it hashes every body), no conditional GET, no cookie jar, no request id.

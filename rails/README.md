@@ -15,7 +15,15 @@ YJIT オン）の API です。本番のバックエンドではありません�
 - 環境変数 `TYPLE_BACKEND_COMPARE` が `1` でなければ、すべてのリクエストに `404 {"error":"notFound"}` を返します。
 - どの答えにもヘッダー `x-typle-backend: rails` を付けます。`next.config.mjs` が付ける4つのセキュリティヘッダーと
   `/api` の CSP も同じものを付けます。Rails が既定で付けるヘッダーと、`Vary: Accept` は付けません。
-- ログインは Cookie だけで決めます。アプリのトークン（`Authorization: Bearer`）は読みません（Next.js も v2.55.0 から読みません）。
+- typle-r の v2.68.1 に合わせています。ログインは Better Auth のセッションです。Cookie `better-auth.session_token`
+  （`AUTH_URL` が `https` なら `__Secure-better-auth.session_token`）の署名を `BETTER_AUTH_SECRET` で確かめ（better-call の
+  `signCookieValue` と同じ HMAC-SHA256）、`typle_auth_sessions` と `typle_auth_users` を1文で読みます。
+  - 署名が合わない・Cookie がない・セッションの行がない・期限が切れている（`expires_at` が今より前）ときは `401 loginRequired`。
+    typle-r（`auth.api.getSession`）と同じく、断るときに Cookie は消しません。
+  - `BETTER_AUTH_SECRET` がない（空白だけも）ときは、ログインが要るリクエストは `503 databaseUnavailable`（typle-r では
+    Better Auth が立ち上がらないため）。
+  - 共有のデモアカウント（`demo:shared`）のセッションは、`DEMO_LOGIN=1` のときだけ通ります。
+  - アプリのトークン（`Authorization: Bearer`）は読みません。書き込みにはいつも同じ `Origin` が要ります。
 - 保存の計測（`typle_save_metrics`）は書きません。表の形は Next.js（リポジトリの `db/`）のもので、Rails のマイグレーションは
   ありません。
 
@@ -29,7 +37,8 @@ rails/
   app/middleware/typle/          比較モードのゲートと、すべての答えに付けるヘッダー（Rack のミドルウェア）
   app/controllers/               health・workspaces（show・update）・records（create・destroy）と、共通の確認
                                  （ログイン・書き込みの Origin と Content-Type・本文の読み取り）
-  app/models/                    Workspace（typle_workspaces）・PracticeRecord（typle_records）・SessionRevocation
+  app/models/                    Workspace（typle_workspaces）・PracticeRecord（typle_records）・AuthSession と AuthUser
+                                 （Better Auth の typle_auth_sessions・typle_auth_users）
   app/lib/typle/                 src/lib と src/server の移植: JS と同じ文字・日付・数・JSON（js.rb・js_date.rb・
                                  json_value.rb）、単語リスト・パック・記録・公式カタログの検査と変換、ログインの Cookie、
                                  保存（workspace_store.rb）
@@ -46,13 +55,15 @@ rails/
 |---|---|
 | `TYPLE_BACKEND_COMPARE` | `1` のときだけ答える。それ以外は全部 `404` |
 | `DATABASE_URL` | Neon などの `postgres://` の URL（なければ `POSTGRES_URL`） |
-| `AUTH_SECRET` | Next.js と同じ値。ここから Cookie の鍵を作る |
-| `AUTH_URL` | Next.js と同じ値。書き込みの `Origin` はこのオリジンと同じでなければならず、`https` なら Cookie の名前は `__Host-typle-session` |
+| `BETTER_AUTH_SECRET` | typle-r と同じ値（前後の空白は除く）。Better Auth の Cookie の署名を確かめる。なければログインが要るリクエストは `503 databaseUnavailable` |
+| `AUTH_URL` | typle-r と同じ値。書き込みの `Origin` はこのオリジンと同じでなければならず、`https` なら Cookie の名前は `__Secure-better-auth.session_token`。http(s) の URL でなければ `503 authUnavailable` |
+| `DEMO_LOGIN` | `1` のときだけ、共有のデモアカウント（`demo:shared`）のセッションを通す |
 | `PORT` | 受けるポート。Cloud Run が付ける。イメージの既定は `8080` |
 | `PGSSLROOTCERT` | `sslmode=verify-full` で使うルート証明書のファイル。既定は `/etc/ssl/certs/ca-certificates.crt`（イメージの中の場所） |
 | `TYPLE_TEST_DATABASE_URL` | テストだけ。DB のテストの接続先 |
 
-`AUTH_URL` と `AUTH_SECRET` は、計測に使う Cookie を発行したデプロイの値にします（Kotlin と同じ。`kotlin/README.md`）。
+`AUTH_URL` と `BETTER_AUTH_SECRET` は、計測に使う Cookie を発行したデプロイの値にします。セッションの行はそのデプロイの DB に
+あるので、`DATABASE_URL` も同じ DB にします。
 
 DB の接続は Next.js（`src/server/database.ts`）にそろえています: 最大 5 本、使わない接続は 30 秒で閉じる、接続と各文は 5 秒で
 諦める（`statement_timeout`）、TCP keep-alive。`sslmode=require`（Neon の URL）は node-postgres 8 と同じく `verify-full` と
@@ -74,7 +85,7 @@ cd rails && bundle config set --local path vendor/bundle && bundle install
 cd rails && bin/rails test
 ```
 
-DB を使うテスト（`tests/fixtures/workspace-writes.json`・`record-writes.json` のシナリオ、保存の衝突、ログインの取り消し、
+DB を使うテスト（`tests/fixtures/workspace-writes.json`・`record-writes.json` のシナリオ、保存の衝突、セッションの行の読み方、
 文の数など）は、`TYPLE_TEST_DATABASE_URL` があるときだけ動き、なければ skip されます。手元の Docker の PostgreSQL を使うとき:
 
 ```bash
@@ -101,7 +112,7 @@ docker build -f rails/Dockerfile -t typle-rails .
 ```bash
 URL=$(grep '^DATABASE_URL=' .env.local | cut -d= -f2- | tr -d '"' | sed 's/127.0.0.1/host.docker.internal/')
 docker run --rm -p 8082:8080 -e TYPLE_BACKEND_COMPARE=1 -e DATABASE_URL="$URL" \
-  -e AUTH_SECRET="$(grep '^AUTH_SECRET=' .env.local | cut -d= -f2- | tr -d '"')" -e AUTH_URL=http://localhost:3000 typle-rails
+  -e BETTER_AUTH_SECRET="$(grep '^BETTER_AUTH_SECRET=' .env.local | cut -d= -f2- | tr -d '"')" -e AUTH_URL=http://localhost:3000 typle-rails
 ```
 
 ```bash
@@ -111,7 +122,8 @@ curl -i http://localhost:8082/api/health
 ## Cloud Run へのデプロイ（ユーザーの Mac から）
 
 `kotlin/README.md` の「Cloud Run へのデプロイ」と同じ手順で、イメージとサービスの名前だけが違います。プロジェクト・リージョン・
-Artifact Registry・Secret Manager の秘密（`typle-auth-secret`・`typle-database-url`）は Kotlin と共有できます。
+Artifact Registry・Secret Manager の秘密（`typle-auth-secret`・`typle-database-url`）は Kotlin と共有できます。`typle-auth-secret`
+の値は typle-r の `BETTER_AUTH_SECRET` にします（Rails はそれを `BETTER_AUTH_SECRET` として読みます）。
 
 ```bash
 IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/typle/typle-rails:$(git rev-parse --short HEAD)"
@@ -128,7 +140,7 @@ gcloud run deploy typle-rails \
   --cpu-throttling \
   --cpu-boost \
   --port=8080 \
-  --set-secrets=AUTH_SECRET=typle-auth-secret:latest,DATABASE_URL=typle-database-url:latest \
+  --set-secrets=BETTER_AUTH_SECRET=typle-auth-secret:latest,DATABASE_URL=typle-database-url:latest \
   --set-env-vars=TYPLE_BACKEND_COMPARE=1,AUTH_URL=https://typle.sparklingstadt.com \
   --allow-unauthenticated
 ```
@@ -167,13 +179,15 @@ Vercel の Preview 環境の `TYPLE_RAILS_URL` も消してください。秘密
 - 孤立サロゲート（`"\ud800"`）を含む JSON は、Ruby のパーサーが読めないので、本文なら `400 invalidWorkspace`（記録は
   `invalidRecord`）にします。Next.js は読めるので、ほかの検査で決まります（`listId` なら `404 recordListDeleted`、
   `recordId` なら `200`、ほかの人の `accountId` なら `401 loginAccountChanged`、lists の中なら `400 invalidWorkspace`）。
-  ログインの Cookie の中身に含まれていると、Rails だけ `401` になります。アプリが送ることはありません。
 - `Date.parse` は Kotlin 版と同じく、ISO 8601 の形とよく使われるいくつかの形だけを読みます（`kotlin/README.md`）。
 - `toLocaleLowerCase()` は Ruby の `downcase` です。
 - 本文は UTF-8 として読み、壊れたバイトは `U+FFFD` にします（`TextDecoder` と、置き換えの単位が少し違うことがあります）。
 - 失敗（`503`）は、Rails のログ（標準出力）に書くだけです。リクエストごとのログは書きません。
 - 知らないパスには `404 {"error":"notFound"}` を返します（Next.js なら 404 のページ）。
-- 設定（`AUTH_SECRET`・`AUTH_URL`）は、値の組ごとに1回だけ鍵を作ります。
+- 設定（`AUTH_URL`・`BETTER_AUTH_SECRET`・`DEMO_LOGIN`）は、値の組ごとに1回だけ読みます。
+- typle-r は Cookie のキャッシュ（最大5分）でセッションの行を読まずに答えることがありますが、Rails は毎回行を読みます（Go と
+  同じ）。そのため「すべての端末からログアウト」のあとは、Rails のほうが早く断ります。文の数はキャッシュのない typle-r と同じです。
+- セッションの行は `LIMIT 1` を付けて読みます（ActiveRecord の `pick`）。トークンは一意なので、答えは同じです。
 - ヘッダーは Node と同じく1バイトを1文字（Latin-1）として読みます。`Content-Type` は Rails には見せず（ゲートが
   `application/octet-stream` に置き換える）、ハンドラーが自分で確かめます。Rails が本文をフォームとして読んだり、MIME 型として
   読めない値で断ったりしないためです。

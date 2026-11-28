@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
 	"github.com/sparklingstadt/typle-backends/server/internal/store"
 	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
 )
@@ -29,10 +30,11 @@ func (f fakeStore) Modify(context.Context, string, func(*workspace.Workspace) (b
 	return nil, f.err
 }
 
-// No account has signed out of every device, whatever err is, so that a test of another failure fails where it means
-// to; revocations_test.go has its own store for them.
-func (f fakeStore) SessionsRevokedAt(context.Context, string) (time.Time, error) {
-	return time.Time{}, nil
+// A token made by tokenOf is a session of its owner, whatever err is, so that a test of another failure fails where it
+// means to; sessions_test.go has its own stores for sessions that cannot be read.
+func (f fakeStore) SessionUser(_ context.Context, token string, _ time.Time) (session.Session, bool, error) {
+	owner, ok := strings.CutPrefix(token, "session-of:")
+	return session.Session{Sub: owner}, ok, nil
 }
 
 func get(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {

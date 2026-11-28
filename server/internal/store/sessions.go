@@ -6,24 +6,28 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
 )
 
-// The sessions are signed cookies and app tokens, not rows, so signing out of every device is a time kept in
-// typle_session_revocations: the sessions of a login no later than it are refused (session.Session.RevokedBy).
+// The sessions are Better Auth's rows (typle_auth_sessions, migration 0042 of typle-r): the login cookie names one by
+// its token, and signing out of every device deletes the user's rows.
 
-// RevokeSessions signs the owner out of every device: every session and app token of a login until now.
-func (s *Store) RevokeSessions(ctx context.Context, owner string) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO typle_session_revocations (owner_id, revoked_at) VALUES ($1, now())
-		ON CONFLICT (owner_id) DO UPDATE SET revoked_at = EXCLUDED.revoked_at`, owner)
-	return err
-}
-
-// SessionsRevokedAt is when the owner last signed out of every device, or the zero time when they never did.
-func (s *Store) SessionsRevokedAt(ctx context.Context, owner string) (time.Time, error) {
-	var revokedAt time.Time
-	err := s.pool.QueryRow(ctx, `SELECT revoked_at FROM typle_session_revocations WHERE owner_id = $1`, owner).Scan(&revokedAt)
+// SessionUser is the user of the session whose token is token, as Better Auth's findSession and getSession read it:
+// the session's row and its user's, and only while the session has not expired at now (expires_at not before now).
+// ok is false for a token of no session and for an expired one.
+func (s *Store) SessionUser(ctx context.Context, token string, now time.Time) (user session.Session, ok bool, err error) {
+	var image *string
+	err = s.pool.QueryRow(ctx, `SELECT u.id, u.name, u.image FROM typle_auth_sessions s
+		JOIN typle_auth_users u ON u.id = s.user_id WHERE s.token = $1 AND s.expires_at >= $2`, token, now).
+		Scan(&user.Sub, &user.Name, &image)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return time.Time{}, nil
+		return session.Session{}, false, nil
 	}
-	return revokedAt, err
+	if err != nil {
+		return session.Session{}, false, err
+	}
+	if image != nil {
+		user.Image = *image
+	}
+	return user, true, nil
 }

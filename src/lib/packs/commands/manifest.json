@@ -267,5 +267,8 @@
   "chinese-hsk6-handwriting-25-words-3.json",
   "chinese-hsk6-handwriting-25-words-4.json",
   "chinese-hsk6-handwriting-25-words-5.json",
-  "chinese-hsk6-handwriting-25-words-6.json"
+  "chinese-hsk6-handwriting-25-words-6.json",
+  "japanese-romaji-beginner.json",
+  "japanese-romaji-intermediate.json",
+  "japanese-romaji-advanced.json"
 ]

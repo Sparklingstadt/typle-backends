@@ -47,11 +47,26 @@ cd rails && bundle config set --local path vendor/bundle && bundle install && bi
 node --test tests/*.test.cjs
 ```
 
-2026-11-25 に、分けたあとのこのリポジトリで4つとも通ることを確かめています（DB あり。Kotlin 91件、Rails 101件）。
+2026-11-25 に、分けたあとのこのリポジトリで4つとも通ることを確かめています（DB あり。Kotlin 91件、Rails 101件）。2026-11-28 に v2.68.1 に合わせたあとも4つとも通っています。ただしこのときは DB なしで、DB を使うテスト（Kotlin 18件、Rails 13件）は飛ばしました。
+
+## 実装が合わせている typle-r の版
+
+| 実装 | 合わせている版 | ログインの読み方 |
+|---|---|---|
+| Go・Kotlin・Rails | v2.68.1 | Better Auth のセッション。Cookie `better-auth.session_token`（AUTH_URL が HTTPS なら `__Secure-` 付き）の署名を `BETTER_AUTH_SECRET` で確かめ、`typle_auth_sessions` の行を読む |
+
+3つの動き（v2.68.1 の `src/server/account.ts`・`workspace.ts` に合わせたもの）:
+
+- 設定は `AUTH_URL`・`BETTER_AUTH_SECRET`・`DATABASE_URL`（または `POSTGRES_URL`）・`DEMO_LOGIN` です。`BETTER_AUTH_SECRET` がないと、ログインが要るリクエストは typle-r と同じく `503 databaseUnavailable` です。
+- セッションの行がない・期限が切れている・署名が合わない Cookie は `401 loginRequired` です。typle-r と同じく、断るときに Cookie は消しません。
+- 共有のデモアカウント（`demo:shared`）のセッションは、`DEMO_LOGIN=1` のときだけ通ります。
+- typle-r は Cookie のキャッシュ（最大5分）でセッションの行を読まずに答えることがありますが、3つとも毎回行を読みます。そのため「すべての端末からログアウト」のあとは、こちらのほうが早く断ります。
+- Rails のセッションの文は ActiveRecord の `pick` なので、末尾に `LIMIT 1` が付きます（token は一意なので答えは同じ）。
+- iPad・Mac アプリのトークン（`Authorization: Bearer`）は、typle-r と同じくもう読みません。書き込みにはいつも同じ Origin が要ります。
 
 ## typle-r からの写し
 
-テストとビルドが読むので、typle-r の次のファイルを同じ相対パスに写してあります。元は typle-r の `6f1a764d`（v2.60.4）です。
+テストとビルドが読むので、typle-r の次のファイルを同じ相対パスに写してあります。元は typle-r の `81c6737b`（v2.68.1）です。
 
 | 場所 | 内容 |
 |---|---|

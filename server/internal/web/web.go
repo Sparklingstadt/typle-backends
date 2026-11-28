@@ -27,9 +27,9 @@ type Store interface {
 	SessionSource
 }
 
-// SessionSource tells when each account last signed out of every device (store.Store.SessionsRevokedAt).
+// SessionSource reads the user of a Better Auth session by its token (store.Store.SessionUser).
 type SessionSource interface {
-	SessionsRevokedAt(ctx context.Context, owner string) (time.Time, error)
+	SessionUser(ctx context.Context, token string, now time.Time) (session.Session, bool, error)
 }
 
 // Config holds what the handlers depend on.
@@ -37,12 +37,15 @@ type Config struct {
 	// Store is the database. nil means it cannot be opened (no DATABASE_URL), which the routes answer with 503
 	// databaseUnavailable where the Next.js routes do.
 	Store Store
-	// Keys opens the login cookie and the app token. BaseURL is where the app is served (AUTH_URL): its scheme picks the
-	// cookie's name and its origin is the only one a write may come from. Without BaseURL the login settings are
-	// missing, and /api/workspace and /api/workspace/records answer 503 authUnavailable, as readLoginSettings returning
-	// null does in src/server/workspace.ts.
-	Keys    session.Keys
-	BaseURL *url.URL
+	// Secret is BETTER_AUTH_SECRET, which signs the session cookie; without it no session can be read (503
+	// databaseUnavailable, as when Better Auth fails to start). BaseURL is where the app is served (AUTH_URL): its scheme
+	// picks the cookie's name and its origin is the only one a write may come from. Without BaseURL the login settings
+	// are missing, and /api/workspace and /api/workspace/records answer 503 authUnavailable, as readLoginSettings
+	// returning null does in src/server/workspace.ts. DemoLogin is DEMO_LOGIN=1: without it the demo account's sessions
+	// are refused.
+	Secret    string
+	BaseURL   *url.URL
+	DemoLogin bool
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
 	// Report is told of a failure that is answered with a 503, with the operation that failed (such as

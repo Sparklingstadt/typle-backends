@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sparklingstadt/typle-backends/server/internal/session"
 	"github.com/sparklingstadt/typle-backends/server/internal/store"
 	"github.com/sparklingstadt/typle-backends/server/internal/web"
 	"github.com/sparklingstadt/typle-backends/server/internal/workspace"
@@ -19,8 +20,8 @@ type fakeStore struct{ err error }
 
 func (f fakeStore) Ping(context.Context) error                               { return f.err }
 func (fakeStore) ReadRevision(context.Context, string) (*store.Saved, error) { return nil, nil }
-func (fakeStore) SessionsRevokedAt(context.Context, string) (time.Time, error) {
-	return time.Time{}, nil
+func (fakeStore) SessionUser(context.Context, string, time.Time) (session.Session, bool, error) {
+	return session.Session{}, false, nil
 }
 func (fakeStore) WriteRevision(context.Context, string, int, store.Change) (*store.Saved, error) {
 	return nil, errors.New("not here")
@@ -46,13 +47,13 @@ func serve(b http.Handler, method, target string) *httptest.ResponseRecorder {
 	return response
 }
 
-var compareEnv = map[string]string{"TYPLE_BACKEND_COMPARE": "1", "DATABASE_URL": "postgres://db", "AUTH_SECRET": "s",
+var compareEnv = map[string]string{"TYPLE_BACKEND_COMPARE": "1", "DATABASE_URL": "postgres://db", "BETTER_AUTH_SECRET": "s",
 	"AUTH_URL": "http://127.0.0.1:3101"}
 
 // Without TYPLE_BACKEND_COMPARE=1 every request is a 404, as in production, and nothing is opened.
 func TestGate(t *testing.T) {
 	for _, value := range []string{"", "0", "true", " 1"} {
-		env := map[string]string{"DATABASE_URL": "postgres://db", "AUTH_SECRET": "s", "AUTH_URL": "http://127.0.0.1:3101",
+		env := map[string]string{"DATABASE_URL": "postgres://db", "BETTER_AUTH_SECRET": "s", "AUTH_URL": "http://127.0.0.1:3101",
 			"TYPLE_BACKEND_COMPARE": value}
 		opened := 0
 		b := backend(true, env, &opened)
@@ -124,11 +125,18 @@ func TestUnavailable(t *testing.T) {
 	}
 	expect("/api/workspace", "authUnavailable")
 	expect("/api/health", "databaseUnavailable")
-	env["AUTH_SECRET"], env["AUTH_URL"] = "s", "ftp://host"
+	env["AUTH_URL"] = "ftp://host"
 	expect("/api/workspace", "authUnavailable")
 	env["AUTH_URL"] = "http://127.0.0.1:3101"
 	expect("/api/workspace", "databaseUnavailable")
 	env["DATABASE_URL"] = "postgres://db"
+	// Without BETTER_AUTH_SECRET Better Auth cannot read the session, which typle-r answers as a database failure;
+	// the handler is not kept until the secret is there.
+	expect("/api/workspace", "databaseUnavailable")
+	if b.ready.Load() != nil {
+		t.Fatal("kept without the secret")
+	}
+	env["BETTER_AUTH_SECRET"] = "s"
 	if response := serve(b, http.MethodGet, "/api/workspace"); response.Code != http.StatusUnauthorized {
 		t.Fatalf("ready = %d %s", response.Code, response.Body)
 	}

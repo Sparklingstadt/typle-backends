@@ -54,12 +54,12 @@ class RoutesTest < ActionDispatch::IntegrationTest
   end
 
   test "a header with bytes beyond ASCII is read as Node reads it, not refused with a 503" do
-    with_env("TYPLE_BACKEND_COMPARE" => "1", "AUTH_SECRET" => "s", "AUTH_URL" => "http://127.0.0.1:3101") do
+    with_env("TYPLE_BACKEND_COMPARE" => "1", "BETTER_AUTH_SECRET" => "s", "AUTH_URL" => "http://127.0.0.1:3101") do
       put "/api/workspace", params: "{}", headers: { "Origin" => "http://127.0.0.1:3101", "Content-Type" => "applicatio\xE9/json".b }
       assert_equal 403, response.status, response.body
       assert_equal "{\"error\":\"forbiddenRequest\"}\n", response.body
     end
-    assert_equal "v", Typle::Sessions.cookie_value("\xC3\xA9=1; typle-session=v".b, "typle-session")
-    assert_equal "ab\u00C3\u00A9", Typle::Sessions.cookie_value("typle-session=ab\xC3\xA9".b, "typle-session")
+    assert_equal "v", Typle::Sessions.cookie_value("\xC3\xA9=1; better-auth.session_token=v".b, "better-auth.session_token")
+    assert_equal "ab\u00C3\u00A9", Typle::Sessions.cookie_value("better-auth.session_token=ab\xC3\xA9".b, "better-auth.session_token")
   end
 end

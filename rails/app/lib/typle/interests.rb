@@ -2,7 +2,7 @@ module Typle
   # src/lib/interests.ts: the ids of the options, in the order they are shown and saved.
   module Interests
     OPTIONS = [
-      ["language", %w[zh ru ko en es fr de cs]],
+      ["language", %w[zh ru ko en es fr de cs ja]],
       ["programming", %w[go kotlin java typescript php ruby sql linux vim test node shell cloud]],
     ].freeze
 

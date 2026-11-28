@@ -157,11 +157,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const send = makeClient(options, env)
   const targets = targetsFor(options)
 
-  // Signed in as the account on every backend? A 401 here usually means the preview's AUTH_SECRET is not production's.
+  // Signed in as the account on every backend? A 401 here usually means the preview's secret (Go: BETTER_AUTH_SECRET, Kotlin and Rails: AUTH_SECRET) is not production's.
   for (const target of targets) {
     const check = await send(target, 'GET', '/api/workspace')
     if (!check.rightBackend) throw new Error(`${target}: ${BACKEND_HEADER} が ${check.answeredBy ?? 'なし'} でした。比較モード（TYPLE_BACKEND_COMPARE=1）のデプロイか、TYPLE_KOTLIN_URL・TYPLE_RAILS_URL を確かめてください。`)
-    if (check.status === 401) throw new Error(`${target}: 401 でした。Cookie が古いか、プレビューの AUTH_SECRET が本番と違います。`)
+    if (check.status === 401) throw new Error(`${target}: 401 でした。Cookie が古いか、プレビューの BETTER_AUTH_SECRET（Kotlin・Rails は AUTH_SECRET）が本番と違います。`)
     if (check.status !== 200) throw new Error(`${target}: GET /api/workspace が ${check.status} でした。`)
   }
 

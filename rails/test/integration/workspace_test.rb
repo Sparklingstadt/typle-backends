@@ -11,14 +11,17 @@ class WorkspaceTest < ActionDispatch::IntegrationTest
   Minitest.after_run do
     next if OWNERS.empty? || !Typle::DatabaseUrl.configured?
 
-    %w[typle_session_revocations typle_records typle_workspaces].each do |table|
+    %w[typle_records typle_workspaces].each do |table|
       ActiveRecord::Base.connection.exec_delete(ActiveRecord::Base.sanitize_sql(["DELETE FROM #{table} WHERE owner_id IN (?)", OWNERS.to_a]))
     end
+    # The session rows go with their users (ON DELETE CASCADE).
+    AuthUser.where(id: OWNERS.to_a).delete_all
   end
 
   setup do
-    @saved_env = %w[TYPLE_BACKEND_COMPARE AUTH_SECRET AUTH_URL].to_h { |key| [key, ENV[key]] }
-    ENV.update("TYPLE_BACKEND_COMPARE" => "1", "AUTH_SECRET" => SECRET, "AUTH_URL" => ORIGIN)
+    @saved_env = %w[TYPLE_BACKEND_COMPARE BETTER_AUTH_SECRET AUTH_URL DEMO_LOGIN].to_h { |key| [key, ENV[key]] }
+    ENV.update("TYPLE_BACKEND_COMPARE" => "1", "BETTER_AUTH_SECRET" => SECRET, "AUTH_URL" => ORIGIN)
+    ENV.delete("DEMO_LOGIN")
   end
 
   teardown do
@@ -29,17 +32,20 @@ class WorkspaceTest < ActionDispatch::IntegrationTest
     skip "TYPLE_TEST_DATABASE_URL is not set" unless Typle::DatabaseUrl.configured?
   end
 
-  def new_owner = "github:#{rand(1_000_000_000...2_000_000_000)}".tap { |owner| OWNERS << owner }
-
-  def seal(owner, iat: Time.now.to_i - 60)
-    key = Typle::LoginSettings.derive_key(SECRET, "typle session v1")
-    payload = Base64.urlsafe_encode64(%({"sub":"#{owner}","name":"N","image":"","iat":#{iat},"exp":#{Time.now.to_i + 3600}}), padding: false)
-    "#{payload}.#{Base64.urlsafe_encode64(OpenSSL::HMAC.digest("SHA256", key, payload), padding: false)}"
+  # A new random account with its Better Auth user and a session of a day, whose token the cookie of headers_for names.
+  def new_owner
+    owner = "github:#{rand(1_000_000_000...2_000_000_000)}"
+    OWNERS << owner
+    AuthUser.insert_all([{ id: owner, name: "Test", email: "#{owner}@users.invalid", email_verified: true }], record_timestamps: false)
+    AuthSession.insert_all([{ id: owner, token: token_of(owner), user_id: owner, expires_at: 1.day.from_now }], record_timestamps: false)
+    owner
   end
+
+  def token_of(owner) = "session-of:#{owner}"
 
   def headers_for(owner, extra = {})
     headers = { "Origin" => ORIGIN, "Content-Type" => "application/json" }
-    headers["Cookie"] = "typle-session=#{seal(owner)}" if owner
+    headers["Cookie"] = "better-auth.session_token=#{Typle::Sessions.sign(token_of(owner), SECRET)}" if owner
     headers.merge(extra).reject { |_, value| value.nil? }
   end
 
@@ -102,7 +108,7 @@ class WorkspaceTest < ActionDispatch::IntegrationTest
       expect_error 403, "forbiddenRequest"
       get "/api/workspace"
       expect_error 503, "databaseUnavailable"
-      with_env("AUTH_SECRET" => nil) do
+      with_env("AUTH_URL" => nil) do
         get "/api/workspace"
         expect_error 503, "authUnavailable"
       end
@@ -194,13 +200,30 @@ class WorkspaceTest < ActionDispatch::IntegrationTest
     expect_error 401, "loginAccountChanged"
   end
 
-  test "a revoked login is refused, and a browser loses its cookie" do
+  test "a session is read from its row while it has not expired, and signing out of every device ends it" do
     database!
     owner = new_owner
-    SessionRevocation.insert_all([{ owner_id: owner, revoked_at: Time.now }])
+    get "/api/workspace", headers: headers_for(owner)
+    assert_equal 200, response.status, response.body
+    assert_equal Typle::Session.new(owner, "Test", ""), AuthSession.user_of(token_of(owner), Time.now)
+    assert_nil AuthSession.user_of("#{token_of(owner)}x", Time.now)
+    assert_nil AuthSession.user_of(token_of(owner), 2.days.from_now)
+    # Expiry is inclusive: a session is read until its expires_at.
+    expires_at = AuthSession.where(token: token_of(owner)).pick(:expires_at)
+    assert_equal owner, AuthSession.user_of(token_of(owner), expires_at)&.sub
+    # Signing out of every device deletes the rows: the cookie no longer opens, and it is not removed.
+    AuthSession.where(user_id: owner).delete_all
     get "/api/workspace", headers: headers_for(owner)
     expect_error 401, "loginRequired"
-    assert_equal "typle-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax", response.headers["Set-Cookie"]
+    assert_nil response.headers["Set-Cookie"]
+  end
+
+  test "an expired session is refused" do
+    database!
+    owner = new_owner
+    AuthSession.where(user_id: owner).update_all(expires_at: 1.minute.ago)
+    get "/api/workspace", headers: headers_for(owner)
+    expect_error 401, "loginRequired"
   end
 
   test "of two saves from the same revision, only one is saved" do
@@ -277,12 +300,12 @@ class WorkspaceTest < ActionDispatch::IntegrationTest
       ActiveSupport::Notifications.subscribed(callback, "sql.active_record", &block)
       statements
     end
-    # The revocation check, then the workspace with its records.
+    # The session with its user, then the workspace with its records.
     assert_equal 2, counted.() { get "/api/workspace", headers: headers_for(owner) }.size
-    # The check, the revision and counts, the update, the records' delete and count (no rows to upsert), the read back.
+    # The session, the revision and counts, the update, the records' delete and count (no rows to upsert), the read back.
     put_statements = counted.() { put "/api/workspace", params: %({"revision":1,"accountId":"#{owner}",#{library("one")}}), headers: headers_for(owner) }
     assert_equal 6, put_statements.size, put_statements.join("\n")
-    # The check, the row held for update, its records, the update, the records' delete, upsert and count, the read back.
+    # The session, the row held for update, its records, the update, the records' delete, upsert and count, the read back.
     add = %({"accountId":"#{owner}","listId":"l","record":{"id":"r1","time":1,"date":"#{AT}","mistakes":0,"accuracy":100}})
     add_statements = counted.() { post "/api/workspace/records", params: add, headers: headers_for(owner) }
     assert_equal 201, response.status, response.body

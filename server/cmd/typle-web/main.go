@@ -1,7 +1,7 @@
 // Command typle-web serves the Go backend of the backend comparison (/api/health, /api/workspace and
 // /api/workspace/records) locally, with the same handler as the Vercel function api/go.go (server/vercel), but without
-// its TYPLE_BACKEND_COMPARE gate. It reads the environment only (DATABASE_URL or POSTGRES_URL, AUTH_SECRET and
-// AUTH_URL); it does not load .env.local.
+// its TYPLE_BACKEND_COMPARE gate. It reads the environment only (DATABASE_URL or POSTGRES_URL, BETTER_AUTH_SECRET,
+// AUTH_URL and DEMO_LOGIN); it does not load .env.local.
 package main
 
 import (
