@@ -68,11 +68,11 @@ node --test tests/*.test.cjs
 
 GitHub Actions（`.github/workflows/ci.yml`）が、プルリクエストと `main` への push ごとに4つを確かめます。
 
-- Go：`gofmt`・`go vet`・`go test`。DB は PostgreSQL 17 で、`db/migrations`（typle-r の写し）を `scripts/migrate-test-db.sh` で流して作ります。
+- Go：`gofmt`・`go vet`・`go test`。DB は PostgreSQL 17 で、`db/migrations`（typle-r の写し）を `scripts/migrate-test-db.sh` で流して作ります（ジョブごとに1つ）。
 - Node：`node --test tests/*.test.cjs`。
-- Rails・Kotlin：DB なしでテストします。DB を使うテストは、v2.60.4 のログインの表（今のマイグレーションでは消える）を読むためです。
+- Rails：`bin/rails test`。Kotlin：`./gradlew test`。どちらも Go と同じ DB で、DB を使うテストまで走らせます。
 
-手元で Go を同じように確かめるときは、空の DB を作り、`scripts/migrate-test-db.sh <DB の URL>` のあとで `TYPLE_TEST_DATABASE_URL=<DB の URL> go test ./...` を走らせます。
+手元で同じように確かめるときは、空の DB を作り、`scripts/migrate-test-db.sh <DB の URL>` のあとで `TYPLE_TEST_DATABASE_URL=<DB の URL>` を付けて各テストを走らせます。
 
 ## typle-r からの写し
 
