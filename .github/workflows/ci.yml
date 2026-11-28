@@ -1,4 +1,4 @@
-# Checks every implementation on each pull request and push to main. Go, Rails and Kotlin run their database tests
+# Checks every implementation on each pull request and push to main. Go, Rails, Kotlin and Laravel run their database tests
 # against a PostgreSQL made from typle-r's migrations (db/migrations, scripts/migrate-test-db.sh).
 name: CI
 
@@ -113,3 +113,30 @@ jobs:
       - name: Migrate the test database
         run: ../scripts/migrate-test-db.sh
       - run: ./gradlew test --no-daemon
+
+  laravel:
+    # The tests run in laravel/Dockerfile.test (PHP 8.4 with pdo_pgsql, as on Cloud Run), on the runner's network so
+    # that they reach the service's PostgreSQL at localhost.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: typle
+          POSTGRES_PASSWORD: typle
+          POSTGRES_DB: typle_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U typle -d typle_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TYPLE_TEST_DATABASE_URL: postgres://typle:typle@localhost:5432/typle_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -f laravel/Dockerfile.test -t typle-laravel-test laravel
+      - name: Migrate the test database
+        run: scripts/migrate-test-db.sh
+      - run: >-
+          docker run --rm --network host -e TYPLE_TEST_DATABASE_URL -v "$PWD":/w -w /w/laravel typle-laravel-test
+          sh -c 'composer install -q --no-interaction && vendor/bin/phpunit'

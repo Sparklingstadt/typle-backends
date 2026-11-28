@@ -1,0 +1,10 @@
+# The PHP of the tests (PHP 8.4 with pdo_pgsql, and Composer). Build and run from the repository root, which the tests
+# read (tests/fixtures, src/lib/packs):
+#   docker build -f laravel/Dockerfile.test -t typle-laravel-test laravel
+#   docker run --rm -v "$PWD":/w -w /w/laravel typle-laravel-test sh -c 'composer install -q && vendor/bin/phpunit'
+FROM php:8.4-cli
+RUN apt-get update -qq && apt-get install -y --no-install-recommends libpq-dev unzip git \
+    && docker-php-ext-install pdo_pgsql \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
