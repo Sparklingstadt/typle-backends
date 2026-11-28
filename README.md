@@ -64,12 +64,23 @@ node --test tests/*.test.cjs
 - Rails のセッションの文は ActiveRecord の `pick` なので、末尾に `LIMIT 1` が付きます（token は一意なので答えは同じ）。
 - iPad・Mac アプリのトークン（`Authorization: Bearer`）は、typle-r と同じくもう読みません。書き込みにはいつも同じ Origin が要ります。
 
+## CI
+
+GitHub Actions（`.github/workflows/ci.yml`）が、プルリクエストと `main` への push ごとに4つを確かめます。
+
+- Go：`gofmt`・`go vet`・`go test`。DB は PostgreSQL 17 で、`db/migrations`（typle-r の写し）を `scripts/migrate-test-db.sh` で流して作ります。
+- Node：`node --test tests/*.test.cjs`。
+- Rails・Kotlin：DB なしでテストします。DB を使うテストは、v2.60.4 のログインの表（今のマイグレーションでは消える）を読むためです。
+
+手元で Go を同じように確かめるときは、空の DB を作り、`scripts/migrate-test-db.sh <DB の URL>` のあとで `TYPLE_TEST_DATABASE_URL=<DB の URL> go test ./...` を走らせます。
+
 ## typle-r からの写し
 
 テストとビルドが読むので、typle-r の次のファイルを同じ相対パスに写してあります。元は typle-r の `81c6737b`（v2.68.1）です。
 
 | 場所 | 内容 |
 |---|---|
+| `db/migrations/` | DB の表を作るマイグレーション（CI の Go のテストが流す） |
 | `tests/fixtures/` | 4つの実装が共通で読むテストデータ |
 | `src/lib/packs/`（`samples.json`・`countries.json`・`commands/*.json`） | 公式の単語リスト |
 | `src/messages/ja/format.json` | 既定の端末の名前 |
