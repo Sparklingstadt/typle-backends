@@ -73,20 +73,34 @@ func (f *fakeWorkspaces) WriteRevision(_ context.Context, _ string, revision int
 	return &store.Saved{Lists: lists, Packs: packs, Devices: devices, Interests: interests, Revision: revision + 1}, nil
 }
 
-// The database tests need the app's tables (npm run db:migrate). They use a random account and delete its row.
+// The database tests need the app's tables (npm run db:migrate in typle-r). They use a random account, signed in with a
+// Better Auth session, and delete its rows.
 func realStore(t *testing.T) (*store.Store, string) {
+	t.Helper()
+	connection := testDatabase(t)
+	s, err := store.OpenApp(context.Background(), connection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	return s, realAccount(t)
+}
+
+func testDatabase(t *testing.T) string {
 	t.Helper()
 	connection := os.Getenv("TYPLE_TEST_DATABASE_URL")
 	if connection == "" {
 		t.Skip("set TYPLE_TEST_DATABASE_URL to a migrated test database")
 	}
+	return connection
+}
+
+// realAccount is a new random account with its Better Auth user and a session of a day, whose token is the one the
+// harness's cookie names. Its rows are deleted when the test ends.
+func realAccount(t *testing.T) string {
+	t.Helper()
 	ctx := context.Background()
-	s, err := store.OpenApp(ctx, connection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	conn, err := pgx.Connect(ctx, connection)
+	conn, err := pgx.Connect(ctx, testDatabase(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,36 +110,56 @@ func realStore(t *testing.T) (*store.Store, string) {
 	t.Cleanup(func() {
 		_, _ = conn.Exec(ctx, `DELETE FROM typle_workspaces WHERE owner_id = $1`, owner)
 		_, _ = conn.Exec(ctx, `DELETE FROM typle_records WHERE owner_id = $1`, owner)
+		// The session row goes with its user (ON DELETE CASCADE).
+		_, _ = conn.Exec(ctx, `DELETE FROM typle_auth_users WHERE id = $1`, owner)
 		conn.Close(ctx)
 	})
-	return s, owner
+	if _, err := conn.Exec(ctx, `INSERT INTO typle_auth_users (id, name, email, email_verified) VALUES ($1, 'Test', $2, true)`,
+		owner, owner+"@users.invalid"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, `INSERT INTO typle_auth_sessions (id, token, user_id, expires_at) VALUES ($1, $2, $1, $3)`,
+		owner, tokenOf(owner), time.Now().Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	return owner
+}
+
+// testSecret is the BETTER_AUTH_SECRET of the tests' handlers.
+const testSecret = "test secret"
+
+// tokenOf is the session token the fake stores know as a session of owner (fakeStore.SessionUser).
+func tokenOf(owner string) string { return "session-of:" + owner }
+
+// sessionCookie is Better Auth's session cookie for a session of owner, signed with secret.
+func sessionCookie(owner, secret string, secure bool) *http.Cookie {
+	return &http.Cookie{Name: session.CookieName(secure), Value: session.Sign(tokenOf(owner), secret)}
 }
 
 type harness struct {
 	handler http.Handler
-	keys    session.Keys
 	reports []string
 }
 
-func newHarness(t *testing.T, s Store, base string) *harness {
+func newHarness(t *testing.T, s Store, base string, change ...func(*Config)) *harness {
 	t.Helper()
-	keys, err := session.NewKeys("test secret")
-	if err != nil {
-		t.Fatal(err)
-	}
 	parsed, err := url.Parse(base)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{keys: keys}
-	h.handler = New(Config{Store: s, Keys: keys, BaseURL: parsed, Report: func(r *http.Request, err error, operation string) {
+	h := &harness{}
+	config := Config{Store: s, Secret: testSecret, BaseURL: parsed, Report: func(r *http.Request, err error, operation string) {
 		h.reports = append(h.reports, operation)
-	}})
+	}}
+	for _, f := range change {
+		f(&config)
+	}
+	h.handler = New(config)
 	return h
 }
 
 func (h *harness) cookie(sub string, secure bool) *http.Cookie {
-	return &http.Cookie{Name: session.CookieName(secure), Value: h.keys.Seal(session.New(sub, "", "", time.Now()))}
+	return sessionCookie(sub, testSecret, secure)
 }
 
 // request is a signed-in PUT from the app's own origin unless the test changes it.

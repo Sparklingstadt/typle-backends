@@ -1,0 +1,257 @@
+{
+  "id": "japanese-romaji-advanced",
+  "name": "日本語：ローマ字入力の基礎（上級）",
+  "category": "語学",
+  "tags": [
+    "日本語",
+    "ローマ字"
+  ],
+  "group": "日本語：ローマ字入力の基礎",
+  "levels": [
+    "上級"
+  ],
+  "words": [
+    {
+      "display": "写真",
+      "input": "しゃしん",
+      "annotation": "しゃ：sha・sya / し：shi・si・ci / ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "貯金",
+      "input": "ちょきん",
+      "annotation": "ちょ：cho・tyo・cyo / ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "旅行",
+      "input": "りょこう",
+      "annotation": "りょ：ryo",
+      "input_type": "word"
+    },
+    {
+      "display": "茶色",
+      "input": "ちゃいろ",
+      "annotation": "ちゃ：cha・tya・cya",
+      "input_type": "word"
+    },
+    {
+      "display": "醤油",
+      "input": "しょうゆ",
+      "annotation": "しょ：sho・syo",
+      "input_type": "word"
+    },
+    {
+      "display": "学校",
+      "input": "がっこう",
+      "annotation": "っ：次の子音を重ねる（kk…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "抹茶",
+      "input": "まっちゃ",
+      "annotation": "っ：次の子音を重ねる（cc…）・ltu / ちゃ：cha・tya・cya",
+      "input_type": "word"
+    },
+    {
+      "display": "結婚",
+      "input": "けっこん",
+      "annotation": "っ：次の子音を重ねる（kk…）・ltu / ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "雑草",
+      "input": "ざっそう",
+      "annotation": "っ：次の子音を重ねる（ss…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "ちょっと",
+      "input": "ちょっと",
+      "annotation": "ちょ：cho・tyo・cyo / っ：次の子音を重ねる（tt…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "一緒",
+      "input": "いっしょ",
+      "annotation": "っ：次の子音を重ねる（ss…）・ltu / しょ：sho・syo",
+      "input_type": "word"
+    },
+    {
+      "display": "禁煙",
+      "input": "きんえん",
+      "annotation": "ん：nn（次が母音・や行・な行なので n を2つ） / ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "恋愛",
+      "input": "れんあい",
+      "annotation": "ん：nn（次が母音・や行・な行なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "反応",
+      "input": "はんのう",
+      "annotation": "ん：nn（次が母音・や行・な行なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "原因",
+      "input": "げんいん",
+      "annotation": "ん：nn（次が母音・や行・な行なので n を2つ） / ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "専用",
+      "input": "せんよう",
+      "annotation": "ん：nn（次が母音・や行・な行なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "翻訳",
+      "input": "ほんやく",
+      "annotation": "ん：nn（次が母音・や行・な行なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "親友",
+      "input": "しんゆう",
+      "annotation": "し：shi・si・ci / ん：nn（次が母音・や行・な行なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "コーヒー",
+      "input": "コーヒー",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "スーパー",
+      "input": "スーパー",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "ファイル",
+      "input": "ファイル",
+      "annotation": "ファ：fa",
+      "input_type": "word"
+    },
+    {
+      "display": "フォーク",
+      "input": "フォーク",
+      "annotation": "フォ：fo / ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "ディスク",
+      "input": "ディスク",
+      "annotation": "ディ：dhi",
+      "input_type": "word"
+    },
+    {
+      "display": "チェック",
+      "input": "チェック",
+      "annotation": "チェ：che・tye・cye / ッ：次の子音を重ねる（kk…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "宿題",
+      "input": "しゅくだい",
+      "annotation": "しゅ：shu・syu",
+      "input_type": "word"
+    },
+    {
+      "display": "教室",
+      "input": "きょうしつ",
+      "annotation": "きょ：kyo / し：shi・si・ci / つ：tsu・tu",
+      "input_type": "word"
+    },
+    {
+      "display": "授業",
+      "input": "じゅぎょう",
+      "annotation": "じゅ：ju・zyu・jyu / ぎょ：gyo",
+      "input_type": "word"
+    },
+    {
+      "display": "病院",
+      "input": "びょういん",
+      "annotation": "びょ：byo / ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "発表",
+      "input": "はっぴょう",
+      "annotation": "っ：次の子音を重ねる（pp…）・ltu / ぴょ：pyo",
+      "input_type": "word"
+    },
+    {
+      "display": "パーティー",
+      "input": "パーティー",
+      "annotation": "ー：-（マイナスのキー） / ティ：thi",
+      "input_type": "word"
+    },
+    {
+      "display": "ウィンドウ",
+      "input": "ウィンドウ",
+      "annotation": "ウィ：wi・whi / ン：n（次が子音なので1つでよい）・nn",
+      "input_type": "word"
+    },
+    {
+      "display": "チャンネル",
+      "input": "チャンネル",
+      "annotation": "チャ：cha・tya・cya / ン：nn（次が母音・や行・な行なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "メッセージ",
+      "input": "メッセージ",
+      "annotation": "ッ：次の子音を重ねる（ss…）・ltu / ー：-（マイナスのキー） / ジ：ji・zi",
+      "input_type": "word"
+    },
+    {
+      "display": "キャンセル",
+      "input": "キャンセル",
+      "annotation": "キャ：kya / ン：n（次が子音なので1つでよい）・nn",
+      "input_type": "word"
+    },
+    {
+      "display": "ジャケット",
+      "input": "ジャケット",
+      "annotation": "ジャ：ja・zya・jya / ッ：次の子音を重ねる（tt…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "牛乳",
+      "input": "ぎゅうにゅう",
+      "annotation": "ぎゅ：gyu / にゅ：nyu",
+      "input_type": "word"
+    },
+    {
+      "display": "ヴァイオリン",
+      "input": "ヴァイオリン",
+      "annotation": "ヴァ：va / ン：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "ソフトウェア",
+      "input": "ソフトウェア",
+      "annotation": "フ：fu・hu / ウェ：we・whe",
+      "input_type": "word"
+    },
+    {
+      "display": "インターネット",
+      "input": "インターネット",
+      "annotation": "ン：n（次が子音なので1つでよい）・nn / ー：-（マイナスのキー） / ッ：次の子音を重ねる（tt…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "おはようございます",
+      "input": "おはようございます",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    }
+  ],
+  "records": [],
+  "createdAt": "2026-11-28T00:00:00.000Z"
+}

@@ -49,9 +49,24 @@ node --test tests/*.test.cjs
 
 2026-11-25 に、分けたあとのこのリポジトリで4つとも通ることを確かめています（DB あり。Kotlin 91件、Rails 101件）。
 
+## 実装が合わせている typle-r の版
+
+| 実装 | 合わせている版 | ログインの読み方 |
+|---|---|---|
+| Go | v2.68.1 | Better Auth のセッション。Cookie `better-auth.session_token`（AUTH_URL が HTTPS なら `__Secure-` 付き）の署名を `BETTER_AUTH_SECRET` で確かめ、`typle_auth_sessions` の行を読む |
+| Kotlin・Rails | v2.60.4 | Auth.js の時代の Cookie（`AUTH_SECRET` から作った鍵）と `typle_session_revocations`。今の typle-r の DB には、その表も Cookie もありません |
+
+Go の動き（v2.68.1 の `src/server/account.ts`・`workspace.ts` に合わせたもの）:
+
+- 設定は `AUTH_URL`・`BETTER_AUTH_SECRET`・`DATABASE_URL`（または `POSTGRES_URL`）・`DEMO_LOGIN` です。`BETTER_AUTH_SECRET` がないと、ログインが要るリクエストは typle-r と同じく `503 databaseUnavailable` です。
+- セッションの行がない・期限が切れている・署名が合わない Cookie は `401 loginRequired` です。typle-r と同じく、断るときに Cookie は消しません。
+- 共有のデモアカウント（`demo:shared`）のセッションは、`DEMO_LOGIN=1` のときだけ通ります。
+- typle-r は Cookie のキャッシュ（最大5分）でセッションの行を読まずに答えることがありますが、Go は毎回行を読みます。そのため「すべての端末からログアウト」のあとは、Go のほうが早く断ります。
+- iPad・Mac アプリのトークン（`Authorization: Bearer`）は、typle-r と同じくもう読みません。書き込みにはいつも同じ Origin が要ります。
+
 ## typle-r からの写し
 
-テストとビルドが読むので、typle-r の次のファイルを同じ相対パスに写してあります。元は typle-r の `6f1a764d`（v2.60.4）です。
+テストとビルドが読むので、typle-r の次のファイルを同じ相対パスに写してあります。元は typle-r の `81c6737b`（v2.68.1）です（`tests/fixtures/sessions.json` だけは、typle-r の v2.62 で消えたあとも Kotlin と Rails のテストのために残しています）。
 
 | 場所 | 内容 |
 |---|---|

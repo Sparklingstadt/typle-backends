@@ -20,8 +20,8 @@ import (
 // with the value "go", so that the benchmark can tell which backend answered.
 const BackendHeader = "x-typle-backend"
 
-// Backend is the Go backend of the comparison, built lazily from the environment: the login settings (AUTH_SECRET and
-// AUTH_URL) and the database (DATABASE_URL, or else POSTGRES_URL). Once both are there the handler is kept and found
+// Backend is the Go backend of the comparison, built lazily from the environment: the login settings (BETTER_AUTH_SECRET,
+// AUTH_URL and DEMO_LOGIN) and the database (DATABASE_URL, or else POSTGRES_URL). Once both are there the handler is kept and found
 // with one atomic load; until then each request builds one from what is there, so a request answers 503
 // authUnavailable or databaseUnavailable where the Next.js routes do, and a later one looks at the environment again.
 type Backend struct {
@@ -111,10 +111,10 @@ func (b *Backend) handler() http.Handler {
 	if built := b.ready.Load(); built != nil {
 		return *built
 	}
-	keys, base, loginReady := web.LoginFromEnv(b.getenv)
+	login := web.LoginFromEnv(b.getenv)
 	source := b.database()
-	handler := web.New(web.Config{Store: source, Keys: keys, BaseURL: base})
-	if loginReady && source != nil {
+	handler := web.New(web.Config{Store: source, Secret: login.Secret, BaseURL: login.BaseURL, DemoLogin: login.DemoLogin})
+	if login.BaseURL != nil && login.Secret != "" && source != nil {
 		b.ready.CompareAndSwap(nil, &handler)
 		return *b.ready.Load()
 	}

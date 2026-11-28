@@ -76,7 +76,7 @@ object Devices {
 /** src/lib/interests.ts: the ids of the options, in the order they are shown and saved. */
 object Interests {
     private val options = listOf(
-        "language" to listOf("zh", "ru", "ko", "en", "es", "fr", "de", "cs"),
+        "language" to listOf("zh", "ru", "ko", "en", "es", "fr", "de", "cs", "ja"),
         "programming" to listOf("go", "kotlin", "java", "typescript", "php", "ruby", "sql", "linux", "vim", "test", "node", "shell", "cloud"),
     )
 

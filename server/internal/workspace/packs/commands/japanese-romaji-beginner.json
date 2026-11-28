@@ -1,0 +1,257 @@
+{
+  "id": "japanese-romaji-beginner",
+  "name": "日本語：ローマ字入力の基礎（初級）",
+  "category": "語学",
+  "tags": [
+    "日本語",
+    "ローマ字"
+  ],
+  "group": "日本語：ローマ字入力の基礎",
+  "levels": [
+    "初級"
+  ],
+  "words": [
+    {
+      "display": "犬",
+      "input": "いぬ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "猫",
+      "input": "ねこ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "空",
+      "input": "そら",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "海",
+      "input": "うみ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "山",
+      "input": "やま",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "川",
+      "input": "かわ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "花",
+      "input": "はな",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "雨",
+      "input": "あめ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "雪",
+      "input": "ゆき",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "星",
+      "input": "ほし",
+      "annotation": "し：shi・si・ci",
+      "input_type": "word"
+    },
+    {
+      "display": "月",
+      "input": "つき",
+      "annotation": "つ：tsu・tu",
+      "input_type": "word"
+    },
+    {
+      "display": "森",
+      "input": "もり",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "家",
+      "input": "いえ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "道",
+      "input": "みち",
+      "annotation": "ち：chi・ti",
+      "input_type": "word"
+    },
+    {
+      "display": "町",
+      "input": "まち",
+      "annotation": "ち：chi・ti",
+      "input_type": "word"
+    },
+    {
+      "display": "口",
+      "input": "くち",
+      "annotation": "ち：chi・ti",
+      "input_type": "word"
+    },
+    {
+      "display": "耳",
+      "input": "みみ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "足",
+      "input": "あし",
+      "annotation": "し：shi・si・ci",
+      "input_type": "word"
+    },
+    {
+      "display": "顔",
+      "input": "かお",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "橋",
+      "input": "はし",
+      "annotation": "し：shi・si・ci",
+      "input_type": "word"
+    },
+    {
+      "display": "船",
+      "input": "ふね",
+      "annotation": "ふ：fu・hu",
+      "input_type": "word"
+    },
+    {
+      "display": "雲",
+      "input": "くも",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "風",
+      "input": "かぜ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "昼",
+      "input": "ひる",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "夜",
+      "input": "よる",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "朝",
+      "input": "あさ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "夏",
+      "input": "なつ",
+      "annotation": "つ：tsu・tu",
+      "input_type": "word"
+    },
+    {
+      "display": "冬",
+      "input": "ふゆ",
+      "annotation": "ふ：fu・hu",
+      "input_type": "word"
+    },
+    {
+      "display": "秋",
+      "input": "あき",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "春",
+      "input": "はる",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "地図",
+      "input": "ちず",
+      "annotation": "ち：chi・ti",
+      "input_type": "word"
+    },
+    {
+      "display": "服",
+      "input": "ふく",
+      "annotation": "ふ：fu・hu",
+      "input_type": "word"
+    },
+    {
+      "display": "靴",
+      "input": "くつ",
+      "annotation": "つ：tsu・tu",
+      "input_type": "word"
+    },
+    {
+      "display": "傘",
+      "input": "かさ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "椅子",
+      "input": "いす",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "水",
+      "input": "みず",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "音",
+      "input": "おと",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "糸",
+      "input": "いと",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "歌",
+      "input": "うた",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "本",
+      "input": "ほん",
+      "annotation": "ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    }
+  ],
+  "records": [],
+  "createdAt": "2026-11-28T00:00:00.000Z"
+}

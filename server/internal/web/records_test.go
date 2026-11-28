@@ -362,7 +362,7 @@ func TestRecordsContract(t *testing.T) {
 	down := newMemoryWorkspace(t, `[`+oneList+`]`)
 	down.err = errors.New("down")
 	hDown := newHarness(t, down, testBase)
-	hSessions := newHarness(t, revocationsDown{memory}, testBase)
+	hSessions := newHarness(t, sessionsDown{memory}, testBase)
 	del := func(r *http.Request) { r.Method = http.MethodDelete }
 	get := func(r *http.Request) { r.Method = http.MethodGet }
 	otherOrigin := func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") }

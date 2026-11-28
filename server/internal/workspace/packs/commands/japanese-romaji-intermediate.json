@@ -1,0 +1,257 @@
+{
+  "id": "japanese-romaji-intermediate",
+  "name": "日本語：ローマ字入力の基礎（中級）",
+  "category": "語学",
+  "tags": [
+    "日本語",
+    "ローマ字"
+  ],
+  "group": "日本語：ローマ字入力の基礎",
+  "levels": [
+    "中級"
+  ],
+  "words": [
+    {
+      "display": "魚",
+      "input": "さかな",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "車",
+      "input": "くるま",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "机",
+      "input": "つくえ",
+      "annotation": "つ：tsu・tu",
+      "input_type": "word"
+    },
+    {
+      "display": "鏡",
+      "input": "かがみ",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "卵",
+      "input": "たまご",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "ぶどう",
+      "input": "ぶどう",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "子供",
+      "input": "こども",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "言葉",
+      "input": "ことば",
+      "annotation": "どのかなもつづりは1通り",
+      "input_type": "word"
+    },
+    {
+      "display": "電話",
+      "input": "でんわ",
+      "annotation": "ん：n（次が子音なので1つでよい）・nn",
+      "input_type": "word"
+    },
+    {
+      "display": "天気",
+      "input": "てんき",
+      "annotation": "ん：n（次が子音なので1つでよい）・nn",
+      "input_type": "word"
+    },
+    {
+      "display": "元気",
+      "input": "げんき",
+      "annotation": "ん：n（次が子音なので1つでよい）・nn",
+      "input_type": "word"
+    },
+    {
+      "display": "みかん",
+      "input": "みかん",
+      "annotation": "ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "鞄",
+      "input": "かばん",
+      "annotation": "ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "銀河",
+      "input": "ぎんが",
+      "annotation": "ん：n（次が子音なので1つでよい）・nn",
+      "input_type": "word"
+    },
+    {
+      "display": "図鑑",
+      "input": "ずかん",
+      "annotation": "ん：nn（語末なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "本屋",
+      "input": "ほんや",
+      "annotation": "ん：nn（次が母音・や行・な行なので n を2つ）",
+      "input_type": "word"
+    },
+    {
+      "display": "汽車",
+      "input": "きしゃ",
+      "annotation": "しゃ：sha・sya",
+      "input_type": "word"
+    },
+    {
+      "display": "医者",
+      "input": "いしゃ",
+      "annotation": "しゃ：sha・sya",
+      "input_type": "word"
+    },
+    {
+      "display": "お茶",
+      "input": "おちゃ",
+      "annotation": "ちゃ：cha・tya・cya",
+      "input_type": "word"
+    },
+    {
+      "display": "歌手",
+      "input": "かしゅ",
+      "annotation": "しゅ：shu・syu",
+      "input_type": "word"
+    },
+    {
+      "display": "辞書",
+      "input": "じしょ",
+      "annotation": "じ：ji・zi / しょ：sho・syo",
+      "input_type": "word"
+    },
+    {
+      "display": "趣味",
+      "input": "しゅみ",
+      "annotation": "しゅ：shu・syu",
+      "input_type": "word"
+    },
+    {
+      "display": "邪魔",
+      "input": "じゃま",
+      "annotation": "じゃ：ja・zya・jya",
+      "input_type": "word"
+    },
+    {
+      "display": "百",
+      "input": "ひゃく",
+      "annotation": "ひゃ：hya",
+      "input_type": "word"
+    },
+    {
+      "display": "今日",
+      "input": "きょう",
+      "annotation": "きょ：kyo",
+      "input_type": "word"
+    },
+    {
+      "display": "九",
+      "input": "きゅう",
+      "annotation": "きゅ：kyu",
+      "input_type": "word"
+    },
+    {
+      "display": "竜",
+      "input": "りゅう",
+      "annotation": "りゅ：ryu",
+      "input_type": "word"
+    },
+    {
+      "display": "蝶",
+      "input": "ちょう",
+      "annotation": "ちょ：cho・tyo・cyo",
+      "input_type": "word"
+    },
+    {
+      "display": "切手",
+      "input": "きって",
+      "annotation": "っ：次の子音を重ねる（tt…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "雑誌",
+      "input": "ざっし",
+      "annotation": "っ：次の子音を重ねる（ss…）・ltu / し：shi・si・ci",
+      "input_type": "word"
+    },
+    {
+      "display": "日記",
+      "input": "にっき",
+      "annotation": "っ：次の子音を重ねる（kk…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "切符",
+      "input": "きっぷ",
+      "annotation": "っ：次の子音を重ねる（pp…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "尻尾",
+      "input": "しっぽ",
+      "annotation": "し：shi・si・ci / っ：次の子音を重ねる（pp…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "根っこ",
+      "input": "ねっこ",
+      "annotation": "っ：次の子音を重ねる（kk…）・ltu",
+      "input_type": "word"
+    },
+    {
+      "display": "ケーキ",
+      "input": "ケーキ",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "ノート",
+      "input": "ノート",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "ゲーム",
+      "input": "ゲーム",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "ボール",
+      "input": "ボール",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "スープ",
+      "input": "スープ",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    },
+    {
+      "display": "ルール",
+      "input": "ルール",
+      "annotation": "ー：-（マイナスのキー）",
+      "input_type": "word"
+    }
+  ],
+  "records": [],
+  "createdAt": "2026-11-28T00:00:00.000Z"
+}

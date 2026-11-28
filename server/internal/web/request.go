@@ -89,7 +89,7 @@ func (s *server) writeAllowed(w http.ResponseWriter, r *http.Request, write bool
 	switch {
 	case !s.loginReady():
 		refuse(w, http.StatusServiceUnavailable, "authUnavailable")
-	case write && (!s.fromAppOrOrigin(r) || !jsonContent(r)):
+	case write && (!s.sameOrigin(r) || !jsonContent(r)):
 		refuse(w, http.StatusForbidden, "forbiddenRequest")
 	case s.config.Store == nil:
 		s.report(r, errors.New("DATABASE_URL is not set"), "workspace.open")
@@ -286,13 +286,6 @@ func safeInteger(raw json.RawMessage) (int, bool) {
 		return 0, false
 	}
 	return int(number), true
-}
-
-// fromAppOrOrigin reports whether a request may change the account's data: the Origin keeps other sites from changing it
-// with the browser's cookie. An app's (iPad, Mac, Android or Windows) token is not sent by a browser on its own, so its
-// requests, which have no Origin, need none.
-func (s *server) fromAppOrOrigin(r *http.Request) bool {
-	return fromApp(r) || s.sameOrigin(r)
 }
 
 // sameOrigin reports whether the request comes from the app's own pages: its Origin is that of BaseURL, written as a
