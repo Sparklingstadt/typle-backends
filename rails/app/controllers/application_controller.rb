@@ -3,6 +3,8 @@
 class ApplicationController < ActionController::API
   MAX_BODY_BYTES = 1 << 20
   BOM = "\xEF\xBB\xBF".b.freeze
+  # The shared demo account's ID (src/server/demoLogin.ts).
+  DEMO_ACCOUNT_ID = "demo:shared"
 
   wrap_parameters false
 
@@ -25,10 +27,10 @@ class ApplicationController < ActionController::API
     reply(status, { "error" => key })
   end
 
-  # The login settings of AUTH_SECRET and AUTH_URL, derived once for each pair.
+  # The login settings of AUTH_URL, BETTER_AUTH_SECRET and DEMO_LOGIN, read once for each set of values.
   def login_settings
     @login_settings ||= begin
-      key = [ENV["AUTH_SECRET"], ENV["AUTH_URL"]]
+      key = [ENV["AUTH_URL"], ENV["BETTER_AUTH_SECRET"], ENV["DEMO_LOGIN"]]
       (self.class.settings_cache[key] ||= [Typle::LoginSettings.read]).first
     end
   end
@@ -50,23 +52,31 @@ class ApplicationController < ActionController::API
     refuse(503, "databaseUnavailable") unless Typle::DatabaseUrl.configured?
   end
 
-  # signedIn of src/server/account.ts: the owner of the login cookie, unless the owner signed out of every device since.
+  # signedIn of src/server/account.ts: the user of the Better Auth session the login cookie names. loginRequired without
+  # a session cookie, with one whose signature does not check out, or with one of no session or an expired one;
+  # databaseUnavailable when the session cannot be read (also without BETTER_AUTH_SECRET, as Better Auth then fails to
+  # start), as the data cannot be either. No cookie is removed: typle-r reads the session through auth.api.getSession,
+  # whose cookies do not reach the answer. The session row is always read (typle-r's cookie cache may answer for up to 5
+  # minutes without it), so a session deleted by signing out of every device is refused at once. The shared demo
+  # account's sessions count only while its login is on (DEMO_LOGIN, src/server/demoLogin.ts).
   def require_owner
     settings = login_settings
-    session = Typle::Sessions.cookie_value(request.headers["Cookie"], settings.cookie_name)&.then { |value| Typle::Sessions.open(settings.session_key, value) }
-    return refuse(401, "loginRequired") if session.nil?
+    if settings.secret.empty?
+      Typle::Report.failure(request, RuntimeError.new("BETTER_AUTH_SECRET is not set"), "session.check")
+      return refuse(503, "databaseUnavailable")
+    end
+    token = Typle::Sessions.cookie_value(request.headers["Cookie"], settings.cookie_name)&.then { |value| Typle::Sessions.token(value, settings.secret) }
+    return refuse(401, "loginRequired") if token.nil?
 
-    revoked_at = begin
-      SessionRevocation.revoked_at_ms(session.sub)
+    user = begin
+      AuthSession.user_of(token, Time.now)
     rescue StandardError => e
       Typle::Report.failure(request, e, "session.check")
       return refuse(503, "databaseUnavailable")
     end
-    if revoked_at && session.issued_at * 1000 <= revoked_at
-      response.headers["Set-Cookie"] = "#{settings.cookie_name}=; Path=/; Max-Age=0; HttpOnly#{"; Secure" if settings.secure}; SameSite=Lax"
-      return refuse(401, "loginRequired")
-    end
-    @owner = session.sub
+    return refuse(401, "loginRequired") if user.nil? || (user.sub == DEMO_ACCOUNT_ID && !settings.demo_login)
+
+    @owner = user.sub
   end
 
   # readSaveRequest: the body as an object whose accountId is the owner's, or nil once a refusal is answered.

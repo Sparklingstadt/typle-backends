@@ -256,14 +256,18 @@ object Workspace {
                 if (!inserted) throw Conflict()
                 connection.execute("DELETE FROM typle_records WHERE owner_id = ?", owner)
             } else {
+                // The saved lists and followed packs are counted as ownListCount and followedPackCount of
+                // src/lib/listOverview.ts count them (typle-r v2.62.0 counts the saved ones with those functions, not in
+                // SQL): a pack is followed when its origin's followed is the JSON true, and the followed packs are a set
+                // of ids.
                 val saved = connection.query(
                     """WITH followed AS (
           SELECT p->>'id' AS id FROM typle_workspaces, jsonb_array_elements(COALESCE(packs, '[]'::jsonb)) AS p
-          WHERE owner_id = ? AND p->'origin'->>'followed' = 'true')
+          WHERE owner_id = ? AND p->'origin'->'followed' = 'true'::jsonb)
         SELECT revision,
           (SELECT count(*) FROM jsonb_array_elements(lists) AS l
             WHERE l->>'packId' IS NULL OR l->>'packId' NOT IN (SELECT id FROM followed)) AS own,
-          (SELECT count(*) FROM followed) AS followed
+          (SELECT count(DISTINCT id) FROM followed) AS followed
         FROM typle_workspaces WHERE owner_id = ?""",
                     owner, owner,
                 ) { rows -> if (rows.next()) Triple(rows.getInt(1).toLong(), rows.getLong(2), rows.getLong(3)) else null }
@@ -300,7 +304,7 @@ object Workspace {
 
     /** readSaveRequest: the login, then the body, then its accountId. */
     private fun readSaveRequest(request: Request, db: Database, login: LoginSettings, operation: String, invalid: String): SaveRequest {
-        val owner = when (val account = Account.signedIn(request, db, login)) {
+        val owner = when (val account = Account.signedIn(request, Account.databaseSessions(db), login)) {
             is Account.Refusal -> return SaveRefused(account.response)
             is Account.User -> account.user.sub
         }
@@ -323,7 +327,7 @@ object Workspace {
     }
 
     private fun readWorkspaceAnswer(request: Request, db: Database, login: LoginSettings): Response {
-        val owner = when (val account = Account.signedIn(request, db, login)) {
+        val owner = when (val account = Account.signedIn(request, Account.databaseSessions(db), login)) {
             is Account.Refusal -> return account.response
             is Account.User -> account.user.sub
         }
@@ -359,7 +363,7 @@ object Workspace {
     /** /api/workspace: GET reads the owner's workspace, PUT saves a change of it by revision. */
     fun answerWorkspace(request: Request, open: () -> Database?, settings: () -> LoginSettings?): Response {
         val login = settings() ?: return Answers.refuse(503, "authUnavailable")
-        if (request.method == "PUT" && (!RequestChecks.fromAppOrOrigin(request, login.origin) || !RequestChecks.jsonContent(request))) {
+        if (request.method == "PUT" && (!RequestChecks.sameOrigin(request, login.origin) || !RequestChecks.jsonContent(request))) {
             return Answers.refuse(403, "forbiddenRequest")
         }
         val db = try {
@@ -438,7 +442,7 @@ object Workspace {
     /** /api/workspace/records: POST adds a record, DELETE deletes one. */
     fun answerRecords(request: Request, open: () -> Database?, settings: () -> LoginSettings?): Response {
         val login = settings() ?: return Answers.refuse(503, "authUnavailable")
-        if (!RequestChecks.fromAppOrOrigin(request, login.origin) || !RequestChecks.jsonContent(request)) return Answers.refuse(403, "forbiddenRequest")
+        if (!RequestChecks.sameOrigin(request, login.origin) || !RequestChecks.jsonContent(request)) return Answers.refuse(403, "forbiddenRequest")
         val db = try {
             open() ?: throw IllegalStateException("DATABASE_URL is not set")
         } catch (error: Exception) {

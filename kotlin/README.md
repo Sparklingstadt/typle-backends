@@ -28,8 +28,8 @@ kotlin/
     Main.kt                 Ktor（Netty）。$PORT（既定 8080）で受ける
     lib/                    src/lib の移植: JSON（JSON.parse・JSON.stringify と同じ読み書き）、Date.parse、devices、
                             interests、wordLists、records、wordPacks、followedPacks、packs/catalog、workspaceRequest
-    server/                 src/server の移植: settings・session（AUTH_SECRET からの鍵、Cookie とアプリのトークン）、
-                            account（typle_session_revocations）、database（HikariCP）、records、workspace、ルート
+    server/                 src/server の移植: settings・session（Better Auth の Cookie の署名）、account
+                            （typle_auth_sessions・typle_auth_users）、database（HikariCP）、records、workspace、ルート
   src/test/kotlin/typle/    テスト。共通 fixture（../tests/fixtures）をそのまま読む
 ```
 
@@ -42,13 +42,21 @@ kotlin/
 |---|---|
 | `TYPLE_BACKEND_COMPARE` | `1` のときだけ答える。それ以外は全部 `404` |
 | `DATABASE_URL` | Neon などの `postgres://` の URL（なければ `POSTGRES_URL`）。JDBC の URL に直して使う |
-| `AUTH_SECRET` | Next.js と同じ値。ここから Cookie とアプリのトークンの鍵を作る |
-| `AUTH_URL` | Next.js と同じ値。書き込みの `Origin` はこのオリジンと同じでなければならず、`https` なら Cookie の名前は `__Host-typle-session` |
+| `BETTER_AUTH_SECRET` | Next.js と同じ値（前後の空白は除く）。Better Auth の Cookie の署名を確かめる。なければログインのいるリクエストはすべて `503 databaseUnavailable` |
+| `AUTH_URL` | Next.js と同じ値。書き込みの `Origin` はこのオリジンと同じでなければならず、`https` なら Cookie の名前は `__Secure-better-auth.session_token`（`http` なら `better-auth.session_token`）。http(s) の URL でなければ `503 authUnavailable` |
+| `DEMO_LOGIN` | ちょうど `1` のときだけ、共有のデモアカウント（`demo:shared`）のセッションを通す |
 | `PORT` | 受けるポート。Cloud Run が付ける。既定は `8080` |
 
 `AUTH_URL` は、計測に使う Cookie を発行したデプロイの値にします。計測スクリプトが本番（`https://typle.sparklingstadt.com`）で
-ログインした Cookie を使うなら、`AUTH_URL=https://typle.sparklingstadt.com` です。`AUTH_SECRET` もその Cookie を
+ログインした Cookie を使うなら、`AUTH_URL=https://typle.sparklingstadt.com` です。`BETTER_AUTH_SECRET` もその Cookie を
 発行したデプロイと同じ値でなければ、`401 loginRequired` になります。
+
+ログインは typle-r（v2.68.1）の `auth.api.getSession` と同じように読みます: Cookie の値を URL デコードし（できなければ
+そのまま）、最後の `.` の前をセッションのトークン、後ろを署名（`BETTER_AUTH_SECRET` によるトークンの HMAC-SHA256 の
+標準 base64）として確かめ、`typle_auth_sessions` の期限の切れていない行とその `typle_auth_users` の行を読みます。
+行は毎回読むので、すべての端末からログアウトして消えたセッションはすぐに `401 loginRequired` になります。断るときも
+Cookie は消しません。iPad・Mac アプリの Bearer トークンはなくなったので、`Authorization` ヘッダーは読まず、書き込みは
+いつも `Origin` が `AUTH_URL` と同じでなければなりません。
 
 DB の接続プールは Next.js（`src/server/database.ts`）にそろえています: 最大 5 本、使わない接続は 30 秒で閉じる、接続と
 各クエリは 5 秒で諦める、TCP keep-alive。`sslmode=require`（Neon の URL）は node-postgres（pg 8）と同じく
@@ -63,10 +71,10 @@ Java はいりません。Docker の中で動かします。`../tests/fixtures` 
 docker run --rm -v "$PWD":/w -v typle-kotlin-gradle:/home/gradle/.gradle -w /w/kotlin gradle:8.14-jdk21 ./gradlew test --no-daemon
 ```
 
-DB を使うテスト（`tests/fixtures/workspace-writes.json`・`record-writes.json` のシナリオ、保存の衝突、ログインの取り消しなど）は、
+DB を使うテスト（`tests/fixtures/workspace-writes.json`・`record-writes.json` のシナリオ、保存の衝突、Better Auth のセッションの行など）は、
 `TYPLE_TEST_DATABASE_URL` があるときだけ動き、なければ skip されます。手元の Docker の PostgreSQL（`.env.local` の
 `DATABASE_URL`）を使うときは、コンテナーの中から見えるように `127.0.0.1` を `host.docker.internal` に変えて渡します。
-テストはランダムな owner で行を足し、終わったら消します。
+テストはランダムな owner で行（`typle_auth_users`・`typle_auth_sessions` も）を足し、終わったら消します。
 
 ```bash
 URL=$(grep '^DATABASE_URL=' .env.local | cut -d= -f2- | tr -d '"' | sed 's/127.0.0.1/host.docker.internal/;s/localhost/host.docker.internal/')
@@ -84,7 +92,7 @@ docker run --rm -e TYPLE_TEST_DATABASE_URL="$URL" -v "$PWD":/w -v typle-kotlin-g
 docker build -f kotlin/Dockerfile -t typle-kotlin .
 URL=$(grep '^DATABASE_URL=' .env.local | cut -d= -f2- | tr -d '"' | sed 's/127.0.0.1/host.docker.internal/')
 docker run --rm -p 8080:8080 -e TYPLE_BACKEND_COMPARE=1 -e DATABASE_URL="$URL" \
-  -e AUTH_SECRET="$(grep '^AUTH_SECRET=' .env.local | cut -d= -f2- | tr -d '"')" -e AUTH_URL=http://localhost:3000 typle-kotlin
+  -e BETTER_AUTH_SECRET="$(grep '^BETTER_AUTH_SECRET=' .env.local | cut -d= -f2- | tr -d '"')" -e AUTH_URL=http://localhost:3000 typle-kotlin
 curl -i http://localhost:8080/api/health
 ```
 
@@ -112,7 +120,7 @@ IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/typle/typle-kotlin:$(git rev-parse --s
 docker buildx build --platform linux/amd64 -f kotlin/Dockerfile -t "$IMAGE" --push .
 
 # 秘密の値は Secret Manager に置く（初回だけ。値は標準入力から渡し、履歴に残さない）
-printf '%s' "$AUTH_SECRET_VALUE" | gcloud secrets create typle-auth-secret --data-file=-
+printf '%s' "$BETTER_AUTH_SECRET_VALUE" | gcloud secrets create typle-auth-secret --data-file=-
 printf '%s' "$DATABASE_URL_VALUE" | gcloud secrets create typle-database-url --data-file=-
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 for s in typle-auth-secret typle-database-url; do
@@ -129,7 +137,7 @@ gcloud run deploy typle-kotlin \
   --cpu-throttling \
   --cpu-boost \
   --port=8080 \
-  --set-secrets=AUTH_SECRET=typle-auth-secret:latest,DATABASE_URL=typle-database-url:latest \
+  --set-secrets=BETTER_AUTH_SECRET=typle-auth-secret:latest,DATABASE_URL=typle-database-url:latest \
   --set-env-vars=TYPLE_BACKEND_COMPARE=1,AUTH_URL=https://typle.sparklingstadt.com \
   --allow-unauthenticated
 ```
@@ -152,7 +160,7 @@ curl -i "https://typle-kotlin-….run.app/api/health"   # 200 と x-typle-backen
 
 ## 比較が終わったら止める・消す
 
-公開 URL で受けているので、比較が終わったらすぐに止めます。動きは本番の API と同じで、ログインの Cookie かトークンがなければ
+公開 URL で受けているので、比較が終わったらすぐに止めます。動きは本番の API と同じで、ログインの Cookie がなければ
 何も読めず書けませんが、置いたままにはしません。
 
 ```bash
@@ -189,5 +197,5 @@ Vercel の Preview 環境の `TYPLE_KOTLIN_URL` も消してください。
 - 本文は、ログインを確かめる前に最大 1 MiB + 1 バイトまで読みます（それより大きければ `413` と分かれば足りるため）。
   答えは同じです。
 - HEAD の答えには `Content-Length: 0` が付きます。
-- 設定（`AUTH_SECRET`・`AUTH_URL`）は起動時に1回だけ読みます（Next.js はリクエストごとに読む）。
+- 設定（`BETTER_AUTH_SECRET`・`AUTH_URL`・`DEMO_LOGIN`）は起動時に1回だけ読みます（Next.js はリクエストごとに読む）。
 - DB の URL の `channel_binding` は JDBC に渡しません。

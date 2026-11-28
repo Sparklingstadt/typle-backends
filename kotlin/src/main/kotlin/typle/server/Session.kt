@@ -1,43 +1,36 @@
 package typle.server
 
-import typle.lib.JsObject
-import typle.lib.JsonParser
-import typle.lib.isInteger
+import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-// src/server/settings.ts and src/server/session.ts: the keys derived from AUTH_SECRET, and the login cookie and the
-// apps' bearer token, base64url(JSON) + "." + base64url(HMAC-SHA256 of that text), as the Go backend sealed them.
+// src/server/settings.ts, src/server/authUser.ts and src/server/betterAuth.ts: the login settings, and the login cookie
+// Better Auth sets, the session token signed with BETTER_AUTH_SECRET as better-call's signCookieValue signs it. The
+// cookie only names a session; who is signed in, and until when, is the session's row in typle_auth_sessions
+// (Account.databaseSessions). Only reading is served here: typle-r signs the users in, and sign is kept for the tests.
 
-/** The login settings these endpoints need: the app's origin and the keys of the cookie and of the apps' token. */
-class LoginSettings(val origin: String, val sessionKey: ByteArray, val appKey: ByteArray, val secure: Boolean) {
+/**
+ * The login settings these endpoints need: the app's origin (AUTH_URL) and whether it is https, BETTER_AUTH_SECRET
+ * (empty when it is not set) and whether the shared demo account's login is on (DEMO_LOGIN is exactly 1).
+ */
+class LoginSettings(val origin: String, val secret: String, val demoLogin: Boolean, val secure: Boolean) {
     companion object {
-        private const val SESSION_INFO = "typle session v1"
-        private const val APP_INFO = "typle app session v1"
-
-        /** HKDF-SHA256 of secret with no salt, 32 bytes, as node:crypto's hkdfSync derives them. */
-        fun deriveKey(secret: String, info: String): ByteArray {
-            fun hmac(key: ByteArray, data: ByteArray): ByteArray =
-                Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }.doFinal(data)
-            // An empty salt is HashLen zero bytes (RFC 5869).
-            val prk = hmac(ByteArray(32), secret.toByteArray(Charsets.UTF_8))
-            return hmac(prk, info.toByteArray(Charsets.UTF_8) + byteArrayOf(1)).copyOf(32)
-        }
-
-        /** readLoginSettings: null when AUTH_SECRET is empty or AUTH_URL is not an http(s) URL with a host. */
+        /**
+         * readLoginSettings: null when AUTH_URL is not an http(s) URL with a host, which the routes answer with 503
+         * authUnavailable. BETTER_AUTH_SECRET is read trimmed, as betterAuthSettings of src/server/authUser.ts reads it;
+         * without it the routes that need the login answer 503 databaseUnavailable (Account.signedIn).
+         */
         fun read(env: Map<String, String>): LoginSettings? {
-            val secret = env["AUTH_SECRET"] ?: ""
             val base = WhatwgUrl.origin(env["AUTH_URL"] ?: "") ?: return null
-            if (secret.isEmpty()) return null
-            return LoginSettings(base.first, deriveKey(secret, SESSION_INFO), deriveKey(secret, APP_INFO), base.second)
+            return LoginSettings(base.first, (env["BETTER_AUTH_SECRET"] ?: "").trim(), env["DEMO_LOGIN"] == "1", base.second)
         }
     }
 
-    /** The login cookie's name: __Host- over HTTPS. */
-    val cookieName get() = if (secure) "__Host-typle-session" else "typle-session"
+    /** The session cookie's name (Sessions.cookieName). */
+    val cookieName get() = Sessions.cookieName(secure)
 }
 
 /** The origin of an http or https URL as new URL(text).origin gives it, and whether it is https; null otherwise. */
@@ -55,44 +48,87 @@ object WhatwgUrl {
     }
 }
 
-/** A signed-in user; times are Unix seconds. */
-data class Session(val sub: String, val name: String, val image: String, val issuedAt: Long, val expires: Long)
+/** A signed-in user: sub is the account ID (typle_auth_users.id, the owner_id of the account's data). */
+data class Session(val sub: String, val name: String, val image: String)
 
 object Sessions {
-    private val accountSub = Regex("^(github:\\d+|password:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ffpf:[a-z0-9]{1,64})$")
-    private val base64url = Regex("^[A-Za-z0-9_-]*$")
+    /**
+     * The length of an HMAC-SHA256 in standard base64 with its padding, the only length better-call's getSignedCookie
+     * accepts.
+     */
+    private const val SIGNATURE_LENGTH = 44
 
-    /** The bytes of strictly written base64url text (no padding, unused bits zero), or null. */
-    fun strictBase64url(text: String): ByteArray? {
-        if (!base64url.matches(text) || text.length % 4 == 1) return null
-        val bytes = try { Base64.getUrlDecoder().decode(text) } catch (_: IllegalArgumentException) { return null }
-        return if (Base64.getUrlEncoder().withoutPadding().encodeToString(bytes) == text) bytes else null
+    /**
+     * The name of Better Auth's session cookie: better-auth.session_token, with the __Secure- prefix when AUTH_URL is
+     * HTTPS (createCookieGetter in better-auth's cookies).
+     */
+    fun cookieName(secure: Boolean) = if (secure) "__Secure-better-auth.session_token" else "better-auth.session_token"
+
+    /**
+     * The session token of a session cookie's value as the Cookie header carries it, as better-call's getSignedCookie
+     * reads it: the value is URL-decoded (kept as it is when it cannot be), then split at its last "." into the token
+     * and its signature, which must be the HMAC-SHA256 of the token under secret in standard base64. null for any other
+     * value, and for an empty secret.
+     */
+    fun token(value: String, secret: String): String? {
+        if (secret.isEmpty()) return null
+        val bytes = percentDecode(value) ?: value.toByteArray(Charsets.UTF_8)
+        val at = bytes.lastIndexOf('.'.code.toByte())
+        if (at < 1) return null
+        val token = bytes.copyOfRange(0, at)
+        val signature = String(bytes.copyOfRange(at + 1, bytes.size), Charsets.ISO_8859_1)
+        if (signature.length != SIGNATURE_LENGTH || !signature.endsWith("=")) return null
+        val sent = try { Base64.getDecoder().decode(signature) } catch (_: IllegalArgumentException) { return null }
+        if (!MessageDigest.isEqual(sent, mac(token, secret))) return null
+        return String(token, Charsets.UTF_8)
     }
 
-    private fun openClaims(key: ByteArray, value: String): JsObject? {
-        val parts = value.split('.')
-        if (parts.size != 2) return null
-        val (payload, signature) = parts
-        val got = strictBase64url(signature)
-        val want = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }
-            .doFinal(payload.toByteArray(Charsets.UTF_8))
-        if (got == null || got.size != want.size || !MessageDigest.isEqual(got, want)) return null
-        val data = strictBase64url(payload) ?: return null
-        // Buffer.toString('utf8') replaces malformed bytes with U+FFFD, as a String made with UTF_8 does.
-        val claims = try { JsonParser.parse(String(data, Charsets.UTF_8)) } catch (_: Exception) { return null }
-        return claims as? JsObject
+    /**
+     * The cookie value Better Auth sets for token (signCookieValue): the token, ".", its signature, URL-encoded as
+     * encodeURIComponent encodes it.
+     */
+    fun sign(token: String, secret: String): String {
+        val bytes = token.toByteArray(Charsets.UTF_8)
+        return encodeURIComponent(bytes + ".".toByteArray() + Base64.getEncoder().encode(mac(bytes, secret)))
     }
 
-    /** The session in value if it was sealed with key, has not expired at now, and is for a GitHub or FFPF ID account. */
-    fun open(key: ByteArray, value: String, now: Double = System.currentTimeMillis() / 1000.0): Session? {
-        val claims = openClaims(key, value) ?: return null
-        val sub = claims["sub"]
-        val name = claims["name"]
-        val image = claims["image"]
-        val iat = claims["iat"]
-        val exp = claims["exp"]
-        if (sub !is String || name !is String || image !is String || !isInteger(iat) || !isInteger(exp)) return null
-        if (!(now < (exp as Double)) || !accountSub.matches(sub)) return null
-        return Session(sub, name, image, (iat as Double).toLong(), exp.toLong())
+    private fun mac(token: ByteArray, secret: String): ByteArray =
+        Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256")) }.doFinal(token)
+
+    /** The bytes of text with its %XX escapes decoded (a "+" stays a "+"), or null when an escape is not two hex digits. */
+    private fun percentDecode(text: String): ByteArray? {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val out = ByteArrayOutputStream(bytes.size)
+        var i = 0
+        while (i < bytes.size) {
+            val b = bytes[i]
+            if (b != '%'.code.toByte()) {
+                out.write(b.toInt())
+                i++
+                continue
+            }
+            if (i + 2 >= bytes.size) return null
+            val high = Character.digit(bytes[i + 1].toInt().toChar(), 16)
+            val low = Character.digit(bytes[i + 2].toInt().toChar(), 16)
+            if (high < 0 || low < 0 || bytes[i + 1] < 0 || bytes[i + 2] < 0) return null
+            out.write(high * 16 + low)
+            i += 3
+        }
+        return out.toByteArray()
+    }
+
+    /** What JavaScript's encodeURIComponent escapes: every byte but A-Z a-z 0-9 - _ . ! ~ * ' ( ). */
+    private fun encodeURIComponent(bytes: ByteArray): String {
+        val hex = "0123456789ABCDEF"
+        val out = StringBuilder()
+        for (b in bytes) {
+            val c = b.toInt() and 0xff
+            if (c in 'A'.code..'Z'.code || c in 'a'.code..'z'.code || c in '0'.code..'9'.code || "-_.!~*'()".indexOf(c.toChar()) >= 0) {
+                out.append(c.toChar())
+            } else {
+                out.append('%').append(hex[c shr 4]).append(hex[c and 15])
+            }
+        }
+        return out.toString()
     }
 }

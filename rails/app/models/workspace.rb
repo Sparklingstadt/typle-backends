@@ -15,14 +15,17 @@ class Workspace < ApplicationRecord
       FROM typle_records r WHERE r.owner_id = typle_workspaces.owner_id)::text END
   SQL
 
+  # The saved lists and followed packs, counted as ownListCount and followedPackCount of src/lib/listOverview.ts count
+  # them (typle-r v2.62.0 counts the saved ones with those functions, not in SQL): a pack is followed when its origin's
+  # followed is the JSON true, and the followed packs are a set of ids.
   COUNTS = <<~SQL.squish
     WITH followed AS (
       SELECT p->>'id' AS id FROM typle_workspaces, jsonb_array_elements(COALESCE(packs, '[]'::jsonb)) AS p
-      WHERE owner_id = ? AND p->'origin'->>'followed' = 'true')
+      WHERE owner_id = ? AND p->'origin'->'followed' = 'true'::jsonb)
     SELECT revision,
       (SELECT count(*) FROM jsonb_array_elements(lists) AS l
         WHERE l->>'packId' IS NULL OR l->>'packId' NOT IN (SELECT id FROM followed)) AS own,
-      (SELECT count(*) FROM followed) AS followed
+      (SELECT count(DISTINCT id) FROM followed) AS followed
     FROM typle_workspaces WHERE owner_id = ?
   SQL
 

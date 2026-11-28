@@ -16,16 +16,19 @@ import typle.server.Conflict
 import typle.server.Database
 import typle.server.DatabaseUrl
 import typle.server.LoginSettings
+import typle.server.Account
+import typle.server.Session
+import typle.server.SessionSource
+import typle.server.Sessions
 import typle.server.Request
 import typle.server.Response
 import typle.server.Workspace
 import typle.server.execute
 import typle.server.query
-import java.util.Base64
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,7 +41,7 @@ class RoutesTest {
         Request(method, path, headers) { body.toByteArray() }
 
     private val origin = "http://127.0.0.1:3101"
-    private val settings = LoginSettings.read(mapOf("AUTH_SECRET" to "s", "AUTH_URL" to origin))
+    private val settings = LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to "s", "AUTH_URL" to origin))
 
     @Test
     fun `outside the comparison every request is 404 notFound`() {
@@ -86,6 +89,12 @@ class RoutesTest {
         assertEquals("{\"error\":\"forbiddenRequest\"}\n", evil.text())
         val text = backend.handle(request("POST", "/api/workspace/records", listOf("Origin" to origin, "Content-Type" to "Application/JSON"), "{}"))
         assertEquals(403, text.status)
+        // The iPad and Mac apps' bearer tokens are gone from typle-r: an Authorization header does not stand in for the Origin.
+        for (path in listOf("/api/workspace" to "PUT", "/api/workspace/records" to "POST")) {
+            val bearer = backend.handle(request(path.second, path.first, listOf("Authorization" to "Bearer x", "Content-Type" to "application/json"), "{}"))
+            assertEquals(403, bearer.status, path.first)
+            assertEquals("{\"error\":\"forbiddenRequest\"}\n", bearer.text())
+        }
         val noAuth = Backend(true, { null }, { null }).handle(request("GET", "/api/workspace"))
         assertEquals("{\"error\":\"authUnavailable\"}\n", noAuth.text())
         assertEquals(503, backend.handle(request("GET", "/api/workspace")).status)
@@ -101,6 +110,100 @@ class RoutesTest {
     }
 }
 
+/** The login without a database: Better Auth's cookie, read against sessions that are only known here. */
+class AccountTest {
+    private val secret = "test secret"
+    private val origin = "http://127.0.0.1:3101"
+    private val settings = LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to secret, "AUTH_URL" to origin))!!
+    private val owner = "github:9100000001"
+
+    private fun tokenOf(owner: String) = "session-of:$owner"
+
+    /** The sessions known: one of each account, by tokenOf. */
+    private val sessions = SessionSource { token, _ ->
+        if (token.startsWith("session-of:")) Session(token.removePrefix("session-of:"), "N", "") else null
+    }
+
+    private fun cookie(owner: String, secure: Boolean = false) = "${Sessions.cookieName(secure)}=${Sessions.sign(tokenOf(owner), secret)}"
+
+    private fun request(cookie: String?, vararg headers: Pair<String, String>) =
+        Request("GET", "/api/workspace", listOfNotNull(cookie?.let { "Cookie" to it }) + headers) { ByteArray(0) }
+
+    private fun signedIn(request: Request, settings: LoginSettings = this.settings, source: SessionSource? = sessions) =
+        Account.signedIn(request, source, settings)
+
+    private fun expectRefusal(result: Account.SignedIn, status: Int, key: String) {
+        val refusal = result as? Account.Refusal ?: error("signed in as ${(result as Account.User).user}")
+        assertEquals(status, refusal.response.status)
+        assertEquals("{\"error\":\"$key\"}\n", refusal.response.text())
+        // Typle-r reads the session through auth.api.getSession, whose cookies never reach the answer.
+        assertNull(refusal.response.header("Set-Cookie"))
+    }
+
+    private fun expectUser(result: Account.SignedIn, sub: String) {
+        val user = result as? Account.User ?: error("refused: ${(result as Account.Refusal).response.text()}")
+        assertEquals(sub, user.user.sub)
+    }
+
+    @Test
+    fun `a Better Auth session opens the account, and no answer drops the cookie`() {
+        expectUser(signedIn(request(cookie(owner))), owner)
+        expectRefusal(signedIn(request(null)), 401, "loginRequired")
+        expectRefusal(signedIn(request("${Sessions.cookieName(false)}=${Sessions.sign("no-session", secret)}")), 401, "loginRequired")
+        expectRefusal(signedIn(request("${Sessions.cookieName(false)}=${Sessions.sign(tokenOf(owner), "another secret")}")), 401, "loginRequired")
+        // Over HTTPS the cookie is the __Secure- one, and the plain one is no one.
+        val https = LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to secret, "AUTH_URL" to "https://typle.example"))!!
+        expectUser(signedIn(request(cookie(owner, true)), https), owner)
+        expectRefusal(signedIn(request(cookie(owner, false)), https), 401, "loginRequired")
+    }
+
+    @Test
+    fun `an Authorization header is ignored`() {
+        expectRefusal(signedIn(request(null, "Authorization" to "Bearer x")), 401, "loginRequired")
+        expectUser(signedIn(request(cookie(owner), "Authorization" to "Bearer x")), owner)
+    }
+
+    @Test
+    fun `when the sessions cannot be read, the data is not served`() {
+        expectRefusal(signedIn(request(cookie(owner)), source = SessionSource { _, _ -> throw IllegalStateException("down") }), 503, "databaseUnavailable")
+        expectRefusal(signedIn(request(cookie(owner)), source = null), 503, "databaseUnavailable")
+        // Without a valid cookie there is nothing to read: the login is required.
+        expectRefusal(signedIn(request(null), source = null), 401, "loginRequired")
+    }
+
+    @Test
+    fun `without BETTER_AUTH_SECRET every request that needs the login is 503 databaseUnavailable`() {
+        val noSecret = LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to "  ", "AUTH_URL" to origin))!!
+        expectRefusal(signedIn(request(cookie(owner)), noSecret), 503, "databaseUnavailable")
+        expectRefusal(signedIn(request(null), noSecret), 503, "databaseUnavailable")
+    }
+
+    @Test
+    fun `the shared demo account's sessions work only while its login is on (DEMO_LOGIN=1)`() {
+        expectRefusal(signedIn(request(cookie(Account.DEMO_ACCOUNT_ID))), 401, "loginRequired")
+        val on = LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to secret, "AUTH_URL" to origin, "DEMO_LOGIN" to "1"))!!
+        expectUser(signedIn(request(cookie(Account.DEMO_ACCOUNT_ID)), on), Account.DEMO_ACCOUNT_ID)
+    }
+
+    @Test
+    fun `the cookie is the first of its name, a leading quote dropped with the last character`() {
+        val name = Sessions.cookieName(false)
+        val good = Sessions.sign(tokenOf(owner), secret)
+        for ((header, opens) in mapOf(
+            "$name=$good" to true,
+            "a=b; $name=\"$good\"" to true,
+            " $name = $good ;x=y" to true,
+            "$name=bad; $name=$good" to false,
+            "__Secure-$name=$good" to false,
+            "better-auth.session_data=$good" to false,
+            "" to false,
+        )) {
+            val result = signedIn(request(header))
+            assertEquals(opens, result is Account.User, "Cookie $header")
+        }
+    }
+}
+
 /**
  * The scenarios the Go backend ran against a real database (tests/fixtures/workspace-writes.json and record-writes.json),
  * run here against TYPLE_TEST_DATABASE_URL; skipped when it is not set.
@@ -112,7 +215,7 @@ class DatabaseTest {
     private val owners = ArrayList<String>()
     private val secret = "typle-kotlin-test-secret"
     private val origin = "http://127.0.0.1:3101"
-    private val settings = LoginSettings.read(mapOf("AUTH_SECRET" to secret, "AUTH_URL" to origin))!!
+    private val settings = LoginSettings.read(mapOf("BETTER_AUTH_SECRET" to secret, "AUTH_URL" to origin))!!
 
     private fun database(): Database {
         assumeTrue(url != null, "TYPLE_TEST_DATABASE_URL is not set")
@@ -124,25 +227,32 @@ class DatabaseTest {
         val db = db ?: return
         if (url == null) return
         db.withConnection { c ->
-            for (table in listOf("typle_session_revocations", "typle_records", "typle_workspaces")) {
+            for (table in listOf("typle_records", "typle_workspaces")) {
                 c.execute("DELETE FROM $table WHERE owner_id = ANY(?)", c.createArrayOf("text", owners.toTypedArray()))
             }
+            // The session rows go with their users (ON DELETE CASCADE).
+            c.execute("DELETE FROM typle_auth_users WHERE id = ANY(?)", c.createArrayOf("text", owners.toTypedArray()))
         }
         db.source.close()
     }
 
-    private fun newOwner() = "github:${Random.nextLong(1_000_000_000, 2_000_000_000)}".also { synchronized(owners) { owners.add(it) } }
-
-    private fun seal(info: String, sub: String): String {
-        val key = LoginSettings.deriveKey(secret, info)
-        val now = System.currentTimeMillis() / 1000
-        val payload = Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("""{"sub":"$sub","name":"N","image":"","iat":${now - 60},"exp":${now + 3600}}""".toByteArray())
-        val mac = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }.doFinal(payload.toByteArray())
-        return "$payload.${Base64.getUrlEncoder().withoutPadding().encodeToString(mac)}"
+    /**
+     * A new random account with its Better Auth user and a session of a day, whose token is the one cookieOf names.
+     * Its rows are deleted when the tests end.
+     */
+    private fun newOwner(): String {
+        val owner = "github:${Random.nextLong(1_000_000_000, 2_000_000_000)}".also { synchronized(owners) { owners.add(it) } }
+        database().withConnection { c ->
+            c.execute("INSERT INTO typle_auth_users (id, name, email, email_verified) VALUES (?, 'Test', ?, true)", owner, "$owner@users.invalid")
+            c.execute("INSERT INTO typle_auth_sessions (id, token, user_id, expires_at) VALUES (?, ?, ?, now() + interval '1 day')",
+                owner, tokenOf(owner), owner)
+        }
+        return owner
     }
 
-    private fun cookieOf(owner: String) = "typle-session=${seal("typle session v1", owner)}"
+    private fun tokenOf(owner: String) = "session-of:$owner"
+
+    private fun cookieOf(owner: String) = "${Sessions.cookieName(false)}=${Sessions.sign(tokenOf(owner), secret)}"
 
     private fun request(method: String, path: String, owner: String?, body: String, headers: Map<String, String> = emptyMap()): Request {
         val all = LinkedHashMap(mapOf("Origin" to origin, "Content-Type" to "application/json"))
@@ -271,22 +381,38 @@ class DatabaseTest {
         expectError(put("""{"x":"${"a".repeat(1 shl 20)}"}"""), 413, "workspaceTooLarge")
         expectError(put("[]"), 400, "invalidWorkspace")
         expectError(put("""{"revision":0,"accountId":"github:2",${library("one")}}"""), 401, "loginAccountChanged")
-        // An app's token stands without an Origin.
-        val app = Workspace.answerWorkspace(
-            Request("PUT", "/api/workspace", listOf("Authorization" to "Bearer ${seal("typle app session v1", owner)}", "Content-Type" to "application/json")) { good.toByteArray() },
-            open, login,
-        )
-        assertEquals(200, app.status, app.text())
+        // An Authorization header no longer stands in for the Origin.
+        expectError(put(good, mapOf("Origin" to "", "Authorization" to "Bearer x")), 403, "forbiddenRequest")
     }
 
     @Test
-    fun `a revoked login is refused, and a browser loses its cookie`() {
+    fun `a session row is read by its token while it has not expired`() {
         val db = database()
         val owner = newOwner()
-        db.withConnection { it.execute("INSERT INTO typle_session_revocations (owner_id, revoked_at) VALUES (?, now())", owner) }
+        val sessions = Account.databaseSessions(db)
+        val now = Instant.now()
+        assertEquals(Session(owner, "Test", ""), sessions.sessionUser(tokenOf(owner), now))
+        assertNull(sessions.sessionUser(tokenOf(owner) + "x", now))
+        assertNull(sessions.sessionUser(tokenOf(owner), now.plus(Duration.ofDays(2))))
+    }
+
+    @Test
+    fun `a session deleted by signing out of every device is refused at once, without dropping the cookie`() {
+        val db = database()
+        val owner = newOwner()
+        assertEquals(200, Workspace.answerWorkspace(request("GET", "/api/workspace", owner, ""), { db }, { settings }).status)
+        db.withConnection { it.execute("DELETE FROM typle_auth_sessions WHERE user_id = ?", owner) }
         val response = Workspace.answerWorkspace(request("GET", "/api/workspace", owner, ""), { db }, { settings })
         expectError(response, 401, "loginRequired")
-        assertEquals("typle-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax", response.header("Set-Cookie"))
+        assertNull(response.header("Set-Cookie"))
+    }
+
+    @Test
+    fun `an expired session is refused`() {
+        val db = database()
+        val owner = newOwner()
+        db.withConnection { it.execute("UPDATE typle_auth_sessions SET expires_at = now() - interval '1 second' WHERE user_id = ?", owner) }
+        expectError(Workspace.answerWorkspace(request("GET", "/api/workspace", owner, ""), { db }, { settings }), 401, "loginRequired")
     }
 
     @Test

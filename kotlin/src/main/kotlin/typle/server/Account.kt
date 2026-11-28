@@ -1,70 +1,82 @@
 package typle.server
 
+import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
-// src/server/account.ts: who a request is signed in as, and whether that login still counts (typle_session_revocations).
+// src/server/account.ts: who a request is signed in as, the Better Auth session its cookie names.
+
+/** Reads the user of a Better Auth session by its token, while the session has not expired at now; null otherwise. */
+fun interface SessionSource {
+    fun sessionUser(token: String, now: Instant): Session?
+}
 
 object Account {
-    /** The value of the cookie name, the first one when there are several; quotes around it are dropped. */
+    /**
+     * The shared demo account's ID (src/server/demoLogin.ts). Its sessions stop working when its login is turned off
+     * (DEMO_LOGIN), not only new logins.
+     */
+    const val DEMO_ACCOUNT_ID = "demo:shared"
+
+    /**
+     * The value of the first cookie named name in the Cookie header, as better-call's parseCookies reads it: the first
+     * pair with that name wins, and a value that starts with a double quote loses its first and last character. The
+     * value is not decoded here (Sessions.token does).
+     */
     fun cookieValue(request: Request, name: String): String? {
         for (part in (request.header("Cookie") ?: "").split(';')) {
             val at = part.indexOf('=')
             if (at < 0 || part.substring(0, at).trim(::isJsWhite) != name) continue
             val value = part.substring(at + 1).trim(::isJsWhite)
-            return if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) value.substring(1, value.length - 1) else value
+            return if (value.startsWith('"')) value.substring(1, maxOf(1, value.length - 1)) else value
         }
         return null
     }
 
     private fun isJsWhite(c: Char) = typle.lib.isJsSpace(c)
 
-    private val tokenSpace = Regex("[ \t]")
-
-    /** The signed-in user: from an app's bearer token when there is an Authorization header, otherwise from the cookie. */
-    fun currentUser(request: Request, settings: LoginSettings, now: Double = System.currentTimeMillis() / 1000.0): Session? {
-        val authorization = request.header("Authorization")
-        if (!authorization.isNullOrEmpty()) {
-            val token = if (authorization.startsWith("Bearer ")) authorization.substring("Bearer ".length) else ""
-            if (token.isEmpty() || tokenSpace.containsMatchIn(token)) return null
-            return Sessions.open(settings.appKey, token, now)
+    /**
+     * The sessions are Better Auth's rows (typle_auth_sessions, migration 0042 of typle-r), read as Better Auth's
+     * findSession and getSession read them: the session's row and its user's, only while the session has not expired
+     * (expires_at not before now). Signing out of every device deletes the user's rows.
+     */
+    fun databaseSessions(db: Database) = SessionSource { token, now ->
+        db.withConnection { c ->
+            c.query(
+                """SELECT u.id, u.name, u.image FROM typle_auth_sessions s
+        JOIN typle_auth_users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at >= ?""",
+                token, OffsetDateTime.ofInstant(now, ZoneOffset.UTC),
+            ) { rows -> if (rows.next()) Session(rows.getString(1), rows.getString(2), rows.getString(3) ?: "") else null }
         }
-        val cookie = cookieValue(request, settings.cookieName) ?: return null
-        return Sessions.open(settings.sessionKey, cookie, now)
-    }
-
-    /** When the owner last signed out of every device, in milliseconds, or null. */
-    fun readRevokedAt(db: Database, owner: String): Long? = db.withConnection { c ->
-        c.query("SELECT revoked_at FROM typle_session_revocations WHERE owner_id = ?", owner) { rows ->
-            if (rows.next()) rows.getObject(1, OffsetDateTime::class.java).toInstant().toEpochMilli() else null
-        }
-    }
-
-    fun revokedBy(user: Session, revokedAt: Long?) = revokedAt != null && user.issuedAt * 1000 <= revokedAt
-
-    fun dropCookie(response: Response, settings: LoginSettings): Response {
-        val secure = if (settings.secure) "; Secure" else ""
-        response.headers.add("Set-Cookie" to "${settings.cookieName}=; Path=/; Max-Age=0; HttpOnly$secure; SameSite=Lax")
-        return response
     }
 
     sealed interface SignedIn
     class User(val user: Session) : SignedIn
     class Refusal(val response: Response) : SignedIn
 
-    /** The user of a request that reads or changes the account's data, or the answer to refuse it with. */
-    fun signedIn(request: Request, db: Database?, settings: LoginSettings): SignedIn {
-        val user = currentUser(request, settings) ?: return Refusal(Answers.refuse(401, "loginRequired"))
-        val revokedAt = try {
-            if (db == null) throw IllegalStateException("no database to check the session against")
-            readRevokedAt(db, user.sub)
+    /**
+     * signedIn of src/server/account.ts, for a request that reads or changes the account's data: loginRequired without
+     * a session cookie, with one whose signature does not check out, or with one of no session or an expired one;
+     * databaseUnavailable when the session cannot be read (also without BETTER_AUTH_SECRET, as Better Auth then fails to
+     * start in typle-r), as the data cannot be either. No cookie is removed: typle-r reads the session through
+     * auth.api.getSession, whose cookies do not reach the answer. The session row is always read (typle-r's cookie cache
+     * may answer for up to 5 minutes without it), so a session deleted by signing out of every device is refused at once.
+     */
+    fun signedIn(request: Request, sessions: SessionSource?, settings: LoginSettings, now: Instant = Instant.now()): SignedIn {
+        if (settings.secret.isEmpty()) {
+            Report.failure(request, IllegalStateException("BETTER_AUTH_SECRET is not set"), "session.check")
+            return Refusal(Answers.refuse(503, "databaseUnavailable"))
+        }
+        val token = cookieValue(request, settings.cookieName)?.let { Sessions.token(it, settings.secret) }
+            ?: return Refusal(Answers.refuse(401, "loginRequired"))
+        val user = try {
+            if (sessions == null) throw IllegalStateException("no database to read the session from")
+            sessions.sessionUser(token, now)
         } catch (error: Exception) {
             Report.failure(request, error, "session.check")
             return Refusal(Answers.refuse(503, "databaseUnavailable"))
         }
-        if (revokedBy(user, revokedAt)) {
-            val refusal = Answers.refuse(401, "loginRequired")
-            return Refusal(if (!request.header("Authorization").isNullOrEmpty()) refusal else dropCookie(refusal, settings))
-        }
+        if (user == null || (user.sub == DEMO_ACCOUNT_ID && !settings.demoLogin)) return Refusal(Answers.refuse(401, "loginRequired"))
         return User(user)
     }
 }

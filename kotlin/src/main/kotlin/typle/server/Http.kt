@@ -47,10 +47,11 @@ object Answers {
 }
 
 object RequestChecks {
-    /** An app's request: it has an Authorization header that is not empty. */
-    fun fromApp(request: Request) = !request.header("Authorization").isNullOrEmpty()
-
-    fun fromAppOrOrigin(request: Request, origin: String) = fromApp(request) || request.header("Origin") == origin
+    /**
+     * Whether the request comes from the app's own pages: its Origin is the origin of AUTH_URL. Every write must pass
+     * this; the iPad and Mac apps' bearer tokens, which stood in for it, are gone from typle-r.
+     */
+    fun sameOrigin(request: Request, origin: String) = request.header("Origin") == origin
 
     /** Whether the body is declared as application/json, compared as written. */
     fun jsonContent(request: Request) = (request.header("Content-Type") ?: "").split(';')[0].trim(' ', '\t', '\n', '\r', '\u000b', '\u000c', ' ', '﻿') == "application/json"
