@@ -1,6 +1,6 @@
 # typle-backends
 
-[Typle](https://github.com/Sparklingstadt/typle-r)（タイピングアプリ）の API の一部を、Go・Kotlin・Rails で実装し直したものです。同じ API を4つの言語で書き、Next.js の Route Handler と速さを比べるために作りました。
+[Typle](https://github.com/Sparklingstadt/typle-r)（タイピングアプリ）の API の一部を、Go・Kotlin・Rails・Laravel で実装し直したものです。同じ API を4つの実装で書き、Next.js の Route Handler と速さを比べるために作りました。
 
 本番で動いているのは typle-r の Next.js だけです。ここにあるのは比較用の実装で、本番のバックエンドではありません。
 
@@ -10,10 +10,11 @@
 | Go | `server/`・`api/go.go`・`go.mod` | Vercel の Go 関数。手元では `go run ./server/cmd/typle-web` |
 | Kotlin（Ktor、JDK 21） | `kotlin/`（[README](kotlin/README.md)） | Google Cloud Run |
 | Rails（Ruby 3.4.1・Rails 8.1） | `rails/`（[README](rails/README.md)） | Google Cloud Run |
+| Laravel（PHP 8.4・Laravel 13、Octane と FrankenPHP） | `laravel/`（[README](laravel/README.md)） | Google Cloud Run |
 
 ## 実装している API
 
-3つとも、次のパスだけを受けます。ログインは Next.js が発行した Cookie を読むだけで、ログインの処理そのものはありません。
+どの実装も、次のパスだけを受けます。ログインは Next.js が発行した Cookie を読むだけで、ログインの処理そのものはありません。
 
 | パス | メソッド | 内容 |
 |---|---|---|
@@ -23,9 +24,9 @@
 
 ## 同じ動きにそろえる方法
 
-- 4つの実装は、同じ fixture（`tests/fixtures`）を読んで同じ答えを返すことを、それぞれのテストで確かめます。保存の衝突（409）、上限、不正な本文の断り方、記録の追加と削除のシナリオが入っています。
-- Rails は Rails らしい書き方（ActiveRecord・コントローラー）で書きつつ、DB に流す文の数と種類を Next.js と同じにしています。
-- JSON としての値は4つとも同じですが、バイトの細部は違うことがあります（Go は保存された値をそのまま返すので、`2.50` の末尾のゼロが残ります）。
+- どの実装も、同じ fixture（`tests/fixtures`）を読んで同じ答えを返すことを、それぞれのテストで確かめます。保存の衝突（409）、上限、不正な本文の断り方、記録の追加と削除のシナリオが入っています。
+- Rails は Rails らしい書き方（ActiveRecord・コントローラー）で、Laravel は Laravel らしい書き方（Eloquent・コントローラー・ミドルウェア）で書きつつ、どちらも DB に流す文の数と種類を Next.js と同じにしています。
+- JSON としての値はどれも同じですが、バイトの細部は違うことがあります（Go は保存された値をそのまま返すので、`2.50` の末尾のゼロが残ります）。
 
 ## テスト
 
@@ -44,6 +45,14 @@ cd rails && bundle config set --local path vendor/bundle && bundle install && bi
 ```
 
 ```bash
+docker build -f laravel/Dockerfile.test -t typle-laravel-test laravel
+```
+
+```bash
+docker run --rm -v "$PWD":/w -w /w/laravel typle-laravel-test sh -c 'composer install -q && vendor/bin/phpunit'
+```
+
+```bash
 node --test tests/*.test.cjs
 ```
 
@@ -53,24 +62,25 @@ node --test tests/*.test.cjs
 
 | 実装 | 合わせている版 | ログインの読み方 |
 |---|---|---|
-| Go・Kotlin・Rails | v2.68.1 | Better Auth のセッション。Cookie `better-auth.session_token`（AUTH_URL が HTTPS なら `__Secure-` 付き）の署名を `BETTER_AUTH_SECRET` で確かめ、`typle_auth_sessions` の行を読む |
+| Go・Kotlin・Rails・Laravel | v2.68.1 | Better Auth のセッション。Cookie `better-auth.session_token`（AUTH_URL が HTTPS なら `__Secure-` 付き）の署名を `BETTER_AUTH_SECRET` で確かめ、`typle_auth_sessions` の行を読む |
 
-3つの動き（v2.68.1 の `src/server/account.ts`・`workspace.ts` に合わせたもの）:
+4つの動き（v2.68.1 の `src/server/account.ts`・`workspace.ts` に合わせたもの）:
 
 - 設定は `AUTH_URL`・`BETTER_AUTH_SECRET`・`DATABASE_URL`（または `POSTGRES_URL`）・`DEMO_LOGIN` です。`BETTER_AUTH_SECRET` がないと、ログインが要るリクエストは typle-r と同じく `503 databaseUnavailable` です。
 - セッションの行がない・期限が切れている・署名が合わない Cookie は `401 loginRequired` です。typle-r と同じく、断るときに Cookie は消しません。
 - 共有のデモアカウント（`demo:shared`）のセッションは、`DEMO_LOGIN=1` のときだけ通ります。
-- typle-r は Cookie のキャッシュ（最大5分）でセッションの行を読まずに答えることがありますが、3つとも毎回行を読みます。そのため「すべての端末からログアウト」のあとは、こちらのほうが早く断ります。
+- typle-r は Cookie のキャッシュ（最大5分）でセッションの行を読まずに答えることがありますが、4つとも毎回行を読みます。そのため「すべての端末からログアウト」のあとは、こちらのほうが早く断ります。
 - Rails のセッションの文は ActiveRecord の `pick` なので、末尾に `LIMIT 1` が付きます（token は一意なので答えは同じ）。
 - iPad・Mac アプリのトークン（`Authorization: Bearer`）は、typle-r と同じくもう読みません。書き込みにはいつも同じ Origin が要ります。
 
 ## CI
 
-GitHub Actions（`.github/workflows/ci.yml`）が、プルリクエストと `main` への push ごとに4つを確かめます。
+GitHub Actions（`.github/workflows/ci.yml`）が、プルリクエストと `main` への push ごとに5つを確かめます。
 
 - Go：`gofmt`・`go vet`・`go test`。DB は PostgreSQL 17 で、`db/migrations`（typle-r の写し）を `scripts/migrate-test-db.sh` で流して作ります（ジョブごとに1つ）。
 - Node：`node --test tests/*.test.cjs`。
 - Rails：`bin/rails test`。Kotlin：`./gradlew test`。どちらも Go と同じ DB で、DB を使うテストまで走らせます。
+- Laravel：`laravel/Dockerfile.test` のイメージで `vendor/bin/phpunit`。同じく DB を使うテストまで走らせます。
 
 手元で同じように確かめるときは、空の DB を作り、`scripts/migrate-test-db.sh <DB の URL>` のあとで `TYPLE_TEST_DATABASE_URL=<DB の URL>` を付けて各テストを走らせます。
 
@@ -101,7 +111,7 @@ Go は公式の単語リストの写しを自分でも持っています（`serv
 
 **今の typle-r では、Vercel を経由する計測はできません。** typle-r は v2.60.5 で、リクエストヘッダー `x-typle-backend` で実装を振り分ける仕組みと、本番を Go に切り替える `TYPLE_BACKEND=go` を外しました。
 
-- 今も測れるもの：Cloud Run のサービスへ直接送る `kotlin-direct`・`rails-direct`。
+- 今も測れるもの：Cloud Run のサービスへ直接送る `kotlin-direct`・`rails-direct`・`laravel-direct`（`--laravel <URL>`）。Laravel は typle-r の振り分けに入ったことがないので、直接送る形だけです。
 - 測れないもの：`next`・`go`・`kotlin`・`rails`（どれも typle-r のデプロイを通る）。測るには、振り分けのある typle-r（v2.60.4 まで）のデプロイが要ります。
 - `scripts/backendCompare.cjs` と [docs/backend-switch.md](docs/backend-switch.md) は、その振り分けの記録として残しています。
 
@@ -112,7 +122,7 @@ Go は公式の単語リストの写しを自分でも持っています（`serv
 | [docs/backend-compare.md](docs/backend-compare.md) | 比較の仕組みと手順（typle-r の v2.60.4 までのもの） |
 | [docs/backend-switch.md](docs/backend-switch.md) | 本番を Go に切り替える手順（同じく v2.60.4 まで） |
 | [docs/superpowers/specs/](docs/superpowers/specs) | 比較と Rails の実装の設計 |
-| [kotlin/README.md](kotlin/README.md)・[rails/README.md](rails/README.md) | それぞれの構成・テスト・Cloud Run へのデプロイ |
+| [kotlin/README.md](kotlin/README.md)・[rails/README.md](rails/README.md)・[laravel/README.md](laravel/README.md) | それぞれの構成・テスト・Cloud Run へのデプロイ |
 
 ## 経緯
 
@@ -120,6 +130,7 @@ Go は公式の単語リストの写しを自分でも持っています（`serv
 
 - Go は、typle-r の本番のバックエンドでした（v0.37.0〜v2.46.11）。v2.47.0 で Next.js に移したあと、v2.52.0 で比較用に戻したものです。
 - Kotlin は v2.52.0、Rails は v2.57.0 で比較に加えました。
+- Laravel は、分けたあとの 2026-11-28 に、typle-r v2.68.1 に合わせて足しました。
 
 ## ライセンス
 

@@ -1,0 +1,15 @@
+# The build context is the repository root (docker build -f laravel/Dockerfile .): only what the build reads goes in.
+*
+!laravel/
+laravel/vendor
+laravel/tests
+laravel/phpunit.xml
+laravel/Dockerfile.test
+laravel/storage/logs/*
+laravel/storage/framework/cache/*
+laravel/bootstrap/cache/*.php
+laravel/.phpunit.cache
+!src/lib/packs/samples.json
+!src/lib/packs/countries.json
+!src/lib/packs/commands/*.json
+!src/messages/ja/format.json

@@ -4,8 +4,9 @@ const { parseArgs, percentile, summarize, targetsFor } = require('../scripts/ben
 
 test('the arguments: the deployment, the Kotlin service and the counts', () => {
   const options = parseArgs(['https://p.example/x', '--kotlin', 'https://k.example/', '--rounds', '10', '--warmup', '0', '--only', 'health,records'])
-  assert.deepEqual(options, { url: 'https://p.example', kotlin: 'https://k.example', rails: null, rounds: 10, warmup: 0, origin: 'https://p.example', only: ['health', 'records'] })
+  assert.deepEqual(options, { url: 'https://p.example', kotlin: 'https://k.example', rails: null, laravel: null, rounds: 10, warmup: 0, origin: 'https://p.example', only: ['health', 'records'] })
   assert.equal(parseArgs(['https://p.example', '--rails', 'https://r.example/x']).rails, 'https://r.example')
+  assert.equal(parseArgs(['https://p.example', '--laravel', 'https://l.example/x']).laravel, 'https://l.example')
   assert.equal(parseArgs(['https://p.example', '--origin', 'https://typle.example/']).origin, 'https://typle.example')
 })
 
@@ -16,6 +17,7 @@ test('wrong arguments are refused', () => {
   assert.throws(() => parseArgs(['https://p.example', '--only', 'auth']), /--only/)
   assert.throws(() => parseArgs(['https://p.example', '--kotlin']), /--kotlin/)
   assert.throws(() => parseArgs(['https://p.example', '--rails']), /--rails/)
+  assert.throws(() => parseArgs(['https://p.example', '--laravel']), /--laravel/)
   assert.throws(() => parseArgs(['https://p.example', '--fast']), /--fast/)
 })
 
@@ -32,4 +34,5 @@ test('Rails is measured only with --rails, and Kotlin directly only with --kotli
   assert.deepEqual(targetsFor(parseArgs(['https://p.example'])), ['next', 'go', 'kotlin'])
   assert.deepEqual(targetsFor(parseArgs(['https://p.example', '--kotlin', 'https://k.example'])), ['next', 'go', 'kotlin', 'kotlin-direct'])
   assert.deepEqual(targetsFor(parseArgs(['https://p.example', '--rails', 'https://r.example'])), ['next', 'go', 'kotlin', 'rails', 'rails-direct'])
+  assert.deepEqual(targetsFor(parseArgs(['https://p.example', '--laravel', 'https://l.example'])), ['next', 'go', 'kotlin', 'laravel-direct'])
 })

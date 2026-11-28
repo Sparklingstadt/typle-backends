@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Times the compared paths (scripts/backendCompare.cjs) on a deployment built with TYPLE_BACKEND_COMPARE=1: each round
 // sends the same request to Next.js, Go and Kotlin through the deployment (x-typle-backend), to the Kotlin service
-// directly when --kotlin is given, and to Rails through the deployment and directly when --rails is given, in turn, so that all of them meet the same database and the same hour. Prints p50,
+// directly when --kotlin is given, to Rails through the deployment and directly when --rails is given, and to the Laravel
+// service directly when --laravel is given, in turn, so that all of them meet the same database and the same hour. Prints p50,
 // p95 and the slowest round trip of each, in milliseconds, and the failures.
 //
 // Usage:
-//   TYPLE_BENCH_COOKIE='__Host-typle-session=…' node scripts/bench-backends.cjs <deployment URL> [--kotlin <URL>] [--rails <URL>]
+//   TYPLE_BENCH_COOKIE='__Secure-better-auth.session_token=…' node scripts/bench-backends.cjs <deployment URL> [--kotlin <URL>]
+//     [--rails <URL>] [--laravel <URL>]
 //     [--rounds 50] [--warmup 3] [--origin <URL>] [--only health,workspace.get,workspace.put,records]
 //
 // TYPLE_BENCH_COOKIE is the Cookie header of a test account signed in on the production site (the preview has no OAuth
@@ -16,14 +18,14 @@
 
 const { BACKEND_HEADER } = require('./backendCompare.cjs')
 
-const TARGETS = ['next', 'go', 'kotlin', 'kotlin-direct', 'rails', 'rails-direct']
+const TARGETS = ['next', 'go', 'kotlin', 'kotlin-direct', 'rails', 'rails-direct', 'laravel-direct']
 
 /** The service each direct target sends to, by its option. */
-const DIRECT = { 'kotlin-direct': 'kotlin', 'rails-direct': 'rails' }
+const DIRECT = { 'kotlin-direct': 'kotlin', 'rails-direct': 'rails', 'laravel-direct': 'laravel' }
 const OPERATIONS = ['health', 'workspace.get', 'workspace.put', 'records']
 
 function parseArgs(argv) {
-  const options = { url: null, kotlin: null, rails: null, rounds: 50, warmup: 3, origin: null, only: OPERATIONS }
+  const options = { url: null, kotlin: null, rails: null, laravel: null, rounds: 50, warmup: 3, origin: null, only: OPERATIONS }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const value = () => {
@@ -32,6 +34,7 @@ function parseArgs(argv) {
     }
     if (arg === '--kotlin') options.kotlin = value()
     else if (arg === '--rails') options.rails = value()
+    else if (arg === '--laravel') options.laravel = value()
     else if (arg === '--rounds') options.rounds = count(value(), arg, 1)
     else if (arg === '--warmup') options.warmup = count(value(), arg, 0)
     else if (arg === '--origin') options.origin = value()
@@ -45,6 +48,7 @@ function parseArgs(argv) {
   options.url = new URL(options.url).origin
   if (options.kotlin !== null) options.kotlin = new URL(options.kotlin).origin
   if (options.rails !== null) options.rails = new URL(options.rails).origin
+  if (options.laravel !== null) options.laravel = new URL(options.laravel).origin
   options.origin = options.origin === null ? options.url : new URL(options.origin).origin
   return options
 }
@@ -139,8 +143,9 @@ function operationFor(name, send) {
 }
 
 /**
- * The targets measured: Kotlin directly only with --kotlin, and Rails only with --rails (a preview without
- * TYPLE_RAILS_URL answers x-typle-backend: rails from Next.js, so every round would fail).
+ * The targets measured: Kotlin directly only with --kotlin, Rails only with --rails (a preview without
+ * TYPLE_RAILS_URL answers x-typle-backend: rails from Next.js, so every round would fail), and Laravel, which typle-r
+ * never routed to, only directly and only with --laravel.
  */
 function targetsFor(options) {
   return TARGETS.filter((target) => {
@@ -157,11 +162,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const send = makeClient(options, env)
   const targets = targetsFor(options)
 
-  // Signed in as the account on every backend? A 401 here usually means the preview's secret (Go: BETTER_AUTH_SECRET, Kotlin and Rails: AUTH_SECRET) is not production's.
+  // Signed in as the account on every backend? A 401 here usually means the backend's BETTER_AUTH_SECRET is not production's.
   for (const target of targets) {
     const check = await send(target, 'GET', '/api/workspace')
     if (!check.rightBackend) throw new Error(`${target}: ${BACKEND_HEADER} が ${check.answeredBy ?? 'なし'} でした。比較モード（TYPLE_BACKEND_COMPARE=1）のデプロイか、TYPLE_KOTLIN_URL・TYPLE_RAILS_URL を確かめてください。`)
-    if (check.status === 401) throw new Error(`${target}: 401 でした。Cookie が古いか、プレビューの BETTER_AUTH_SECRET（Kotlin・Rails は AUTH_SECRET）が本番と違います。`)
+    if (check.status === 401) throw new Error(`${target}: 401 でした。Cookie が古いか、BETTER_AUTH_SECRET が本番と違います。`)
     if (check.status !== 200) throw new Error(`${target}: GET /api/workspace が ${check.status} でした。`)
   }
 

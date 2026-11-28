@@ -1,0 +1,30 @@
+# The FrankenPHP server of `php artisan octane:frankenphp --caddyfile=Caddyfile` (Octane fills in the {$...} values).
+# Unlike Octane's own Caddyfile: every request goes to the Octane worker (no file of public/ is served), no answer is
+# compressed (nor gets Vary: Accept-Encoding), no request is logged, and Caddy's Server header is dropped, so the answers
+# carry the headers the app writes and no others (as Puma's do for the Rails backend).
+{
+	{$CADDY_GLOBAL_OPTIONS}
+
+	admin {$CADDY_SERVER_ADMIN_HOST}:{$CADDY_SERVER_ADMIN_PORT}
+
+	frankenphp {
+		worker {
+			file "{$APP_PUBLIC_PATH}/frankenphp-worker.php"
+			{$CADDY_SERVER_WORKER_DIRECTIVE}
+		}
+	}
+}
+
+{$CADDY_SERVER_SERVER_NAME} {
+	header -Server
+
+	route {
+		root * "{$APP_PUBLIC_PATH}"
+
+		php_server {
+			index frankenphp-worker.php
+			try_files frankenphp-worker.php
+			file_server off
+		}
+	}
+}
